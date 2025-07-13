@@ -5,7 +5,10 @@ const zxcvbn = require('zxcvbn');
 const { sendOTP } = require('../utils/mailer');
 const crypto = require('crypto');
 
+const PASSWORD_EXPIRY_DAYS = 90;
+const PASSWORD_HISTORY_LENGTH = 5;
 
+// REGISTER
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -15,31 +18,33 @@ exports.register = async (req, res) => {
       return res.status(400).json({ msg: 'Password must be 8-32 characters.' });
 
     const result = zxcvbn(password);
-    if (result.score < 3) // 0-4, require "strong" or better
+    if (result.score < 3)
       return res.status(400).json({ msg: 'Password too weak. Use upper, lower, numbers, symbols.' });
+
+    // Check for upper, lower, number, symbol
+    const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
+    if (!pattern.test(password))
+      return res.status(400).json({ msg: 'Password must have upper, lower, number, symbol.' });
 
     // Check if user exists
     const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ msg: 'Email already registered.' });
-
-    // Check for minimum 1 uppercase, 1 lowercase, 1 number, 1 special character
-    const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
-    if (!pattern.test(password)) return res.status(400).json({ msg: 'Password must have upper, lower, number, symbol.' });
+    if (existingUser)
+      return res.status(400).json({ msg: 'Email already registered.' });
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Prevent using recent passwords (could check against previous users if updating)
-    // For new reg, just start passwordHistory with current hash
-
-    // Create user
+    // Create user (start history with current)
+    const expiryDate = new Date(Date.now() + PASSWORD_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
     const user = new User({
       name,
       email,
       password: hashedPassword,
       role,
       passwordHistory: [hashedPassword],
-      passwordChangedAt: new Date()
+      passwordChangedAt: new Date(),
+      passwordExpiry: expiryDate,
+      failedLoginAttempts: 0,
     });
     await user.save();
 
@@ -49,11 +54,72 @@ exports.register = async (req, res) => {
   }
 };
 
-// Generate and send OTP
+// LOGIN (with password expiry and lockout check)
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Find user
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ msg: 'Invalid credentials.' });
+
+    // Account lockout
+    if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
+      return res.status(403).json({ msg: 'Account locked. Try again later.' });
+    }
+
+    // Password expiry check
+    if (user.passwordExpiry && user.passwordExpiry < new Date()) {
+      return res.status(403).json({
+        msg: 'Password expired. Please change your password.',
+        password_expired: true,
+      });
+    }
+
+    // Password check
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+      // Lock account after 5 failures
+      if (user.failedLoginAttempts >= 5) {
+        user.accountLockedUntil = new Date(Date.now() + 10 * 60 * 1000); // 10 min lock
+        user.failedLoginAttempts = 0;
+      }
+      await user.save();
+      return res.status(400).json({ msg: 'Invalid credentials.' });
+    }
+
+    // Reset failed attempts
+    user.failedLoginAttempts = 0;
+    await user.save();
+
+    // Issue JWT
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '2h' }
+    );
+
+    // Send user data + mfaEnabled for frontend
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        mfaEnabled: user.mfaEnabled,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ msg: 'Login failed', error: err.message });
+  }
+};
+
+// MFA: Generate and send OTP
 exports.requestMfa = async (req, res) => {
   try {
     const { email } = req.body;
-    // Find user
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ msg: 'User not found.' });
 
@@ -72,7 +138,7 @@ exports.requestMfa = async (req, res) => {
   }
 };
 
-// Verify OTP
+// MFA: Verify OTP
 exports.verifyMfa = async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -90,48 +156,23 @@ exports.verifyMfa = async (req, res) => {
     user.otpExpiry = undefined;
     await user.save();
 
-    // Issue JWT (could issue a longer-lived token here)
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '2h' });
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    // Issue JWT
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '2h' }
+    );
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        mfaEnabled: user.mfaEnabled,
+      },
+    });
   } catch (err) {
     res.status(500).json({ msg: 'OTP verification failed', error: err.message });
-  }
-};
-
-// Login controller
-exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    // Find user
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'Invalid credentials.' });
-
-    // Check lockout
-    if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
-      return res.status(403).json({ msg: 'Account locked. Try again later.' });
-    }
-
-    // Compare password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      user.failedLoginAttempts += 1;
-      // Lock account after 5 failures
-      if (user.failedLoginAttempts >= 5) {
-        user.accountLockedUntil = new Date(Date.now() + 10 * 60 * 1000); // 10 min lock
-        user.failedLoginAttempts = 0;
-      }
-      await user.save();
-      return res.status(400).json({ msg: 'Invalid credentials.' });
-    }
-
-    user.failedLoginAttempts = 0; // reset on success
-    await user.save();
-
-    // Issue JWT (to be improved with MFA/refresh token etc)
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '2h' });
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
-  } catch (err) {
-    res.status(500).json({ msg: 'Login failed', error: err.message });
   }
 };
