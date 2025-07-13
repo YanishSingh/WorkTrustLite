@@ -14,10 +14,10 @@ const userSchema = new mongoose.Schema({
   mfaSecret: String,
 
   // Password security
-  password: { type: String, required: true },
   passwordHistory: [{ type: String }], // Store previous password hashes
   passwordChangedAt: { type: Date, default: Date.now },
   passwordExpiry: { type: Date, default: () => Date.now() + 90*24*60*60*1000 }, // 90 days
+  loginCountSincePasswordChange: { type: Number, default: 0 }, // <--- NEW FIELD
 
   // Account lockout
   accountLockedUntil: Date,

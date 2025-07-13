@@ -10,55 +10,55 @@ exports.getProfile = async (req, res) => {
   res.json(user);
 };
 
-// UPDATE user profile or password
+// Helper: Password policy & history checks
+async function validateNewPassword(user, password) {
+  // Length
+  if (!password || password.length < 8 || password.length > 32)
+    return 'Password must be 8-32 characters.';
+  // Strength
+  if (zxcvbn(password).score < 3)
+    return 'Password too weak.';
+  // Pattern
+  const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
+  if (!pattern.test(password))
+    return 'Password must have upper, lower, number, symbol.';
+  // Recent N (5) not reused
+  const recent = user.passwordHistory ? user.passwordHistory.slice(-5) : [];
+  for (let prev of recent) {
+    if (await bcrypt.compare(password, prev))
+      return 'Cannot reuse recent password.';
+  }
+  return null;
+}
+
+// UPDATE user profile (fields + password)
 exports.updateProfile = async (req, res) => {
   const { name, bio, avatar, password, currentPassword } = req.body;
   const user = await User.findById(req.user.id);
-
   if (!user) return res.status(404).json({ msg: 'User not found.' });
 
-  // Update normal fields
+  // Fields
   if (name) user.name = name;
   if (bio) user.bio = bio;
   if (avatar) user.avatar = avatar;
 
-  // --- Password Change Logic ---
+  // Password change logic
   if (password) {
     if (!currentPassword)
       return res.status(400).json({ msg: 'Current password required.' });
+    if (!(await bcrypt.compare(currentPassword, user.password)))
+      return res.status(400).json({ msg: 'Current password incorrect.' });
 
-    // Must match current password
-    const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) return res.status(400).json({ msg: 'Current password incorrect.' });
+    const msg = await validateNewPassword(user, password);
+    if (msg) return res.status(400).json({ msg });
 
-    // Length 8-32
-    if (password.length < 8 || password.length > 32)
-      return res.status(400).json({ msg: 'Password must be 8-32 characters.' });
-
-    // Strength check (zxcvbn)
-    const score = zxcvbn(password).score;
-    if (score < 3)
-      return res.status(400).json({ msg: 'Password too weak.' });
-
-    // Must contain upper, lower, number, symbol
-    const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
-    if (!pattern.test(password))
-      return res.status(400).json({ msg: 'Password must have upper, lower, number, symbol.' });
-
-    // No reuse of recent N passwords (N=5 here)
-    const recentHistory = user.passwordHistory ? user.passwordHistory.slice(-5) : [];
-    for (let prev of recentHistory) {
-      if (await bcrypt.compare(password, prev))
-        return res.status(400).json({ msg: 'Cannot reuse recent password.' });
-    }
-
-    // Hash and update
+    // Hash & update history (keep 5)
     const newHash = await bcrypt.hash(password, 12);
-    // Push current password to history (keep at most 5)
-    user.passwordHistory = [...recentHistory, user.password].slice(-5);
+    user.passwordHistory = [...(user.passwordHistory || []).slice(-4), user.password]; // 4+1
     user.password = newHash;
     user.passwordChangedAt = new Date();
-    user.passwordExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // +90 days
+    user.passwordExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+    user.loginCountSincePasswordChange = 0; // Reset login count
   }
 
   await user.save();
@@ -66,43 +66,65 @@ exports.updateProfile = async (req, res) => {
   res.json({ msg: 'Profile updated.' });
 };
 
-// Optional: Endpoint to force change password on expiry (can be used in forced expiry UI)
+// FORCE password change (for password expiry)
 exports.forcePasswordChange = async (req, res) => {
   const { userId, newPassword, currentPassword } = req.body;
   const user = await User.findById(userId);
   if (!user) return res.status(404).json({ msg: 'User not found.' });
 
-  // Must match current password
-  const valid = await bcrypt.compare(currentPassword, user.password);
-  if (!valid) return res.status(400).json({ msg: 'Current password incorrect.' });
+  if (!currentPassword)
+    return res.status(400).json({ msg: 'Current password required.' });
+  if (!(await bcrypt.compare(currentPassword, user.password)))
+    return res.status(400).json({ msg: 'Current password incorrect.' });
 
-  // Repeat checks (same as above)
-  if (newPassword.length < 8 || newPassword.length > 32)
-    return res.status(400).json({ msg: 'Password must be 8-32 characters.' });
+  const msg = await validateNewPassword(user, newPassword);
+  if (msg) return res.status(400).json({ msg });
 
-  const score = zxcvbn(newPassword).score;
-  if (score < 3)
-    return res.status(400).json({ msg: 'Password too weak.' });
-
-  const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
-  if (!pattern.test(newPassword))
-    return res.status(400).json({ msg: 'Password must have upper, lower, number, symbol.' });
-
-  // Check recent N history (N=5)
-  const recentHistory = user.passwordHistory ? user.passwordHistory.slice(-5) : [];
-  for (let prev of recentHistory) {
-    if (await bcrypt.compare(newPassword, prev))
-      return res.status(400).json({ msg: 'Cannot reuse recent password.' });
-  }
-
-  // Hash and update
   const newHash = await bcrypt.hash(newPassword, 12);
-  user.passwordHistory = [...recentHistory, user.password].slice(-5);
+  user.passwordHistory = [...(user.passwordHistory || []).slice(-4), user.password]; // 4+1
   user.password = newHash;
   user.passwordChangedAt = new Date();
   user.passwordExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+  user.loginCountSincePasswordChange = 0; // Reset login count
 
   await user.save();
   logActivity(user._id, 'force_password_change', {});
   res.json({ msg: 'Password changed. Please log in again.' });
+};
+
+exports.resetExpiredPassword = async (req, res) => {
+  try {
+    const { email, currentPassword, newPassword } = req.body;
+    if (!email || !currentPassword || !newPassword)
+      return res.status(400).json({ msg: "All fields required" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ msg: "User not found" });
+
+    // Validate current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) return res.status(400).json({ msg: "Current password is incorrect" });
+
+    // Enforce password policy
+    if (newPassword.length < 8) {
+      return res.status(400).json({ msg: "Password must be at least 8 characters" });
+    }
+    const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
+    if (!pattern.test(newPassword)) {
+      return res.status(400).json({ msg: "Password must have uppercase, lowercase, number, symbol" });
+    }
+
+    const newHashed = await bcrypt.hash(newPassword, 12);
+    // Optionally check password history, update expiry, etc
+    user.password = newHashed;
+    user.passwordChangedAt = new Date();
+    user.passwordExpiry = new Date(Date.now() + 90*24*60*60*1000); // 90 days
+    user.loginCountSincePasswordChange = 0;
+    user.passwordHistory = [newHashed, ...(user.passwordHistory || [])].slice(0, 5);
+
+    await user.save();
+    res.json({ msg: "Password updated! Please log in." });
+  } catch (err) {
+    res.status(500).json({ msg: "Server error", error: err.message });
+  }
 };

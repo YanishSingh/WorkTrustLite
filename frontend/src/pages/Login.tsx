@@ -17,6 +17,7 @@ interface LoginResponse {
   token: string;
   passwordExpired?: boolean;
   passwordReuseLimit?: boolean;
+  password_expired?: boolean; // backend may use snake_case
   msg?: string;
 }
 
@@ -24,6 +25,8 @@ const Login: React.FC = () => {
   const [form, setForm] = useState({ email: "", password: "" });
   const [mfaRequired, setMfaRequired] = useState(false);
   const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -33,17 +36,19 @@ const Login: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     try {
       const res = await api.post<LoginResponse>("/auth/login", form);
-      // Password expiry/reuse checks:
-      if (res.data.passwordExpired) {
+
+      // Password expiry/reuse checks
+      if (res.data.passwordExpired || res.data.password_expired) {
         toast.error("Your password has expired. Please set a new password to continue.");
-        setTimeout(() => navigate("/change-password", { state: { email: form.email } }), 1200);
+        navigate("/change-password", { state: { email: form.email }, replace: true });
         return;
       }
       if (res.data.passwordReuseLimit) {
         toast.error("Password reuse limit reached. Please set a new password to continue.");
-        setTimeout(() => navigate("/change-password", { state: { email: form.email } }), 1200);
+        navigate("/change-password", { state: { email: form.email }, replace: true });
         return;
       }
 
@@ -53,27 +58,35 @@ const Login: React.FC = () => {
         await api.post("/auth/request-mfa", { email: form.email });
         toast.info("Multi-factor authentication required. Check your email for the OTP.");
       } else {
-        login(res.data.user, res.data.token);
+        login(res.data.user, res.data.token, false);
         toast.success("Login successful! Redirecting...");
         navigate("/dashboard");
       }
     } catch (err: any) {
       toast.error(err.response?.data?.msg || "Login failed. Please check your credentials.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleVerifyMfa = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     try {
       const res = await api.post<LoginResponse>("/auth/verify-mfa", { email: form.email, otp });
-      login(res.data.user, res.data.token);
+      login(res.data.user, res.data.token, false);
       toast.success("MFA verified! Logged in.");
+      setOtp("");
+      setMfaRequired(false);
       navigate("/dashboard");
     } catch (err: any) {
       toast.error(err.response?.data?.msg || "OTP verification failed. Try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
+  // --- UI ---
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#e6fcf2]">
       <div className="w-full max-w-md">
@@ -86,11 +99,11 @@ const Login: React.FC = () => {
             </span>
           </div>
           <h2 className="text-3xl font-extrabold text-center text-emerald-800 mb-2">Sign in</h2>
-          <p className="text-center text-emerald-600 mb-6">Welcome to <span className="font-bold">WorkTrust Lite</span></p>
-
+          <p className="text-center text-emerald-600 mb-6">
+            Welcome to <span className="font-bold">WorkTrust Lite</span>
+          </p>
           {!mfaRequired ? (
             <form onSubmit={handleLogin} className="space-y-6">
-              {/* Email */}
               <div className="relative">
                 <input
                   type="email"
@@ -99,9 +112,10 @@ const Login: React.FC = () => {
                   required
                   value={form.email}
                   onChange={handleChange}
-                  className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
+                  className="block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent"
                   autoComplete="email"
                   placeholder=" "
+                  disabled={loading}
                 />
                 <label
                   htmlFor="email"
@@ -114,7 +128,6 @@ const Login: React.FC = () => {
                   Email
                 </label>
               </div>
-              {/* Password */}
               <div className="relative">
                 <input
                   type="password"
@@ -123,9 +136,10 @@ const Login: React.FC = () => {
                   required
                   value={form.password}
                   onChange={handleChange}
-                  className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
+                  className="block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent"
                   autoComplete="current-password"
                   placeholder=" "
+                  disabled={loading}
                 />
                 <label
                   htmlFor="password"
@@ -138,17 +152,16 @@ const Login: React.FC = () => {
                   Password
                 </label>
               </div>
-              {/* Login Button */}
               <button
                 className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg shadow-md transition hover:bg-emerald-700 hover:shadow-xl active:scale-98 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 type="submit"
+                disabled={loading}
               >
-                Login
+                {loading ? "Signing in..." : "Login"}
               </button>
             </form>
           ) : (
             <form onSubmit={handleVerifyMfa} className="space-y-6">
-              {/* OTP */}
               <div className="relative">
                 <input
                   type="text"
@@ -157,11 +170,12 @@ const Login: React.FC = () => {
                   required
                   value={otp}
                   onChange={e => setOtp(e.target.value)}
-                  className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
+                  className="block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent"
                   autoComplete="one-time-code"
                   inputMode="numeric"
                   maxLength={6}
                   placeholder=" "
+                  disabled={loading}
                 />
                 <label
                   htmlFor="otp"
@@ -177,8 +191,9 @@ const Login: React.FC = () => {
               <button
                 className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg shadow-md transition hover:bg-emerald-700 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 type="submit"
+                disabled={loading}
               >
-                Verify MFA
+                {loading ? "Verifying..." : "Verify MFA"}
               </button>
             </form>
           )}
@@ -188,6 +203,7 @@ const Login: React.FC = () => {
               type="button"
               className="text-emerald-600 hover:underline font-semibold"
               onClick={() => navigate('/register')}
+              disabled={loading}
             >
               Register
             </button>

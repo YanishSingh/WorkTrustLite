@@ -7,13 +7,14 @@ const crypto = require('crypto');
 
 const PASSWORD_EXPIRY_DAYS = 90;
 const PASSWORD_HISTORY_LENGTH = 5;
+const MAX_LOGIN_BEFORE_EXPIRY = 5;
 
 // REGISTER
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Password length & strength check
+    // Password policy
     if (!password || password.length < 8 || password.length > 32)
       return res.status(400).json({ msg: 'Password must be 8-32 characters.' });
 
@@ -21,12 +22,11 @@ exports.register = async (req, res) => {
     if (result.score < 3)
       return res.status(400).json({ msg: 'Password too weak. Use upper, lower, numbers, symbols.' });
 
-    // Check for upper, lower, number, symbol
     const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
     if (!pattern.test(password))
       return res.status(400).json({ msg: 'Password must have upper, lower, number, symbol.' });
 
-    // Check if user exists
+    // Existing user
     const existingUser = await User.findOne({ email });
     if (existingUser)
       return res.status(400).json({ msg: 'Email already registered.' });
@@ -34,8 +34,9 @@ exports.register = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Create user (start history with current)
+    // Set expiry and login count
     const expiryDate = new Date(Date.now() + PASSWORD_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
     const user = new User({
       name,
       email,
@@ -44,6 +45,7 @@ exports.register = async (req, res) => {
       passwordHistory: [hashedPassword],
       passwordChangedAt: new Date(),
       passwordExpiry: expiryDate,
+      loginCountSincePasswordChange: 0,
       failedLoginAttempts: 0,
     });
     await user.save();
@@ -54,43 +56,68 @@ exports.register = async (req, res) => {
   }
 };
 
-// LOGIN (with password expiry and lockout check)
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Find user
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ msg: 'Invalid credentials.' });
 
-    // Account lockout
+    // Lockout check
     if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
       return res.status(403).json({ msg: 'Account locked. Try again later.' });
     }
 
-    // Password expiry check
-    if (user.passwordExpiry && user.passwordExpiry < new Date()) {
-      return res.status(403).json({
-        msg: 'Password expired. Please change your password.',
-        password_expired: true,
-      });
-    }
-
-    // Password check
+    // Password check (must happen before increment)
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-      // Lock account after 5 failures
       if (user.failedLoginAttempts >= 5) {
-        user.accountLockedUntil = new Date(Date.now() + 10 * 60 * 1000); // 10 min lock
+        user.accountLockedUntil = new Date(Date.now() + 10 * 60 * 1000);
         user.failedLoginAttempts = 0;
       }
       await user.save();
       return res.status(400).json({ msg: 'Invalid credentials.' });
     }
 
-    // Reset failed attempts
+    // Password expiry by date
+    if (user.passwordExpiry && user.passwordExpiry < new Date()) {
+      // Return 200 OK so frontend can redirect
+      return res.status(200).json({
+        msg: 'Password expired. Please change your password.',
+        passwordExpired: true,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          mfaEnabled: user.mfaEnabled,
+        }
+      });
+    }
+
+    // Password expiry by login count (5 logins)
+    if (
+      typeof user.loginCountSincePasswordChange === 'number' &&
+      user.loginCountSincePasswordChange >= MAX_LOGIN_BEFORE_EXPIRY
+    ) {
+      // Return 200 OK so frontend can redirect
+      return res.status(200).json({
+        msg: 'Password expired after 5 logins. Please change your password.',
+        passwordExpired: true,
+        passwordReuseLimit: true,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          mfaEnabled: user.mfaEnabled,
+        }
+      });
+    }
+
+    // Reset failed attempts and increment login count (after passing expiry checks)
     user.failedLoginAttempts = 0;
+    user.loginCountSincePasswordChange = (user.loginCountSincePasswordChange || 0) + 1;
     await user.save();
 
     // Issue JWT
@@ -100,7 +127,6 @@ exports.login = async (req, res) => {
       { expiresIn: '2h' }
     );
 
-    // Send user data + mfaEnabled for frontend
     res.json({
       token,
       user: {
@@ -123,14 +149,12 @@ exports.requestMfa = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ msg: 'User not found.' });
 
-    // Generate 6-digit OTP, store hash + expiry
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     user.mfaSecret = otpHash;
-    user.otpExpiry = Date.now() + 5 * 60 * 1000; // 5 min
+    user.otpExpiry = Date.now() + 5 * 60 * 1000;
     await user.save();
 
-    // Send OTP
     await sendOTP(email, otp);
     res.json({ msg: 'OTP sent to email.' });
   } catch (err) {
@@ -145,18 +169,15 @@ exports.verifyMfa = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user || !user.mfaSecret) return res.status(400).json({ msg: 'No MFA requested.' });
 
-    // Hash submitted OTP and compare
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     if (user.otpExpiry < Date.now()) return res.status(400).json({ msg: 'OTP expired.' });
 
     if (user.mfaSecret !== otpHash) return res.status(400).json({ msg: 'Invalid OTP.' });
 
-    // Clear MFA secret on success
     user.mfaSecret = undefined;
     user.otpExpiry = undefined;
     await user.save();
 
-    // Issue JWT
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
