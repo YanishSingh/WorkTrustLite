@@ -15,6 +15,9 @@ interface User {
 interface LoginResponse {
   user: User;
   token: string;
+  passwordExpired?: boolean;
+  passwordReuseLimit?: boolean;
+  msg?: string;
 }
 
 const Login: React.FC = () => {
@@ -32,6 +35,19 @@ const Login: React.FC = () => {
     e.preventDefault();
     try {
       const res = await api.post<LoginResponse>("/auth/login", form);
+      // Password expiry/reuse checks:
+      if (res.data.passwordExpired) {
+        toast.error("Your password has expired. Please set a new password to continue.");
+        setTimeout(() => navigate("/change-password", { state: { email: form.email } }), 1200);
+        return;
+      }
+      if (res.data.passwordReuseLimit) {
+        toast.error("Password reuse limit reached. Please set a new password to continue.");
+        setTimeout(() => navigate("/change-password", { state: { email: form.email } }), 1200);
+        return;
+      }
+
+      // MFA
       if (res.data.user?.mfaEnabled) {
         setMfaRequired(true);
         await api.post("/auth/request-mfa", { email: form.email });
@@ -85,7 +101,7 @@ const Login: React.FC = () => {
                   onChange={handleChange}
                   className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
                   autoComplete="email"
-                  placeholder=" " // Empty placeholder, only label shows
+                  placeholder=" "
                 />
                 <label
                   htmlFor="email"

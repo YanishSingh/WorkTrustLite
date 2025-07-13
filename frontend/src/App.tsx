@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Login from './pages/Login';
+import ChangePassword from './pages/ChangePassword';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
@@ -21,6 +22,8 @@ const App: React.FC = () => (
       <Route path="/invoices" element={<ProtectedRoute><Invoice /></ProtectedRoute>} />
       <Route path="/payment-success" element={<Payment status="success" />} />
       <Route path="/payment-cancelled" element={<Payment status="cancelled" />} />
+      <Route path="/change-password" element={<ChangePassword />} />
+      
       <Route path="*" element={<Login />} />
     </Routes>
   </BrowserRouter>
