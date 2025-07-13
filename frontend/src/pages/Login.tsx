@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import api from "../api/axios";
 import { useAuth } from "../context/useAuth";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner"; // Import sonner toast
+import { toast } from "sonner";
 
 interface User {
   id: string;
@@ -59,121 +59,118 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-blue-600 to-purple-400 relative">
-      <div className="relative z-10 w-full max-w-md">
-        <div className="backdrop-blur-lg bg-white/70 rounded-2xl shadow-2xl p-10 border border-white/40">
-          <h2 className="text-3xl font-extrabold text-center text-gray-900 mb-2">Sign in</h2>
-          <p className="text-center text-gray-500 mb-6">Welcome to WorkTrust Lite</p>
+    <div className="min-h-screen flex items-center justify-center bg-[#e6fcf2]">
+      <div className="w-full max-w-md">
+        <div className="rounded-2xl shadow-2xl p-10 border border-gray-100 bg-white/90">
+          <div className="flex justify-center mb-4">
+            <span className="inline-block bg-gradient-to-tr from-emerald-600 to-blue-400 rounded-full p-3 shadow-lg">
+              <svg width="32" height="32" fill="none" viewBox="0 0 24 24" className="text-white">
+                <path d="M12 21c4.97 0 9-4.03 9-9 0-4.97-4.03-9-9-9S3 7.03 3 12c0 4.97 4.03 9 9 9Zm0-3v-2m0 0a3 3 0 0 1-2.99-3.15c.14-1.65 1.48-2.65 2.99-2.65s2.85 1 2.99 2.65A3 3 0 0 1 12 16Zm0 0V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+          </div>
+          <h2 className="text-3xl font-extrabold text-center text-emerald-800 mb-2">Sign in</h2>
+          <p className="text-center text-emerald-600 mb-6">Welcome to <span className="font-bold">WorkTrust Lite</span></p>
+
           {!mfaRequired ? (
             <form onSubmit={handleLogin} className="space-y-6">
+              {/* Email */}
               <div className="relative">
                 <input
                   type="email"
                   name="email"
+                  id="email"
                   required
                   value={form.email}
                   onChange={handleChange}
-                  className="peer w-full border rounded-xl px-4 pt-6 pb-2 bg-transparent text-base placeholder-transparent focus:outline-none focus:border-blue-500"
-                  placeholder="Email"
+                  className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
                   autoComplete="email"
+                  placeholder=" " // Empty placeholder, only label shows
                 />
                 <label
-                  className="absolute left-4 top-2 text-gray-500 text-base transition-all duration-200
-                  peer-placeholder-shown:top-5 peer-placeholder-shown:text-base
-                  peer-placeholder-shown:text-gray-400
-                  peer-focus:top-2 peer-focus:text-sm peer-focus:text-blue-600"
+                  htmlFor="email"
+                  className={`absolute left-4 transition-all duration-200 pointer-events-none ${
+                    form.email
+                      ? "text-xs top-1.5 text-emerald-700"
+                      : "top-6 text-base text-emerald-400"
+                  }`}
                 >
                   Email
                 </label>
               </div>
+              {/* Password */}
               <div className="relative">
                 <input
                   type="password"
                   name="password"
+                  id="password"
                   required
                   value={form.password}
                   onChange={handleChange}
-                  className="peer w-full border rounded-xl px-4 pt-6 pb-2 bg-transparent text-base placeholder-transparent focus:outline-none focus:border-blue-500"
-                  placeholder="Password"
+                  className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
                   autoComplete="current-password"
+                  placeholder=" "
                 />
                 <label
-                  className="absolute left-4 top-2 text-gray-500 text-base transition-all duration-200
-                  peer-placeholder-shown:top-5 peer-placeholder-shown:text-base
-                  peer-placeholder-shown:text-gray-400
-                  peer-focus:top-2 peer-focus:text-sm peer-focus:text-blue-600"
+                  htmlFor="password"
+                  className={`absolute left-4 transition-all duration-200 pointer-events-none ${
+                    form.password
+                      ? "text-xs top-1.5 text-emerald-700"
+                      : "top-6 text-base text-emerald-400"
+                  }`}
                 >
                   Password
                 </label>
               </div>
+              {/* Login Button */}
               <button
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-500 text-white font-bold py-2 rounded-xl shadow-lg transition hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-300"
+                className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg shadow-md transition hover:bg-emerald-700 hover:shadow-xl active:scale-98 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 type="submit"
               >
                 Login
               </button>
-              <div className="flex items-center my-2">
-                <div className="flex-grow border-t border-gray-300"></div>
-                <span className="mx-2 text-gray-400 text-sm">or</span>
-                <div className="flex-grow border-t border-gray-300"></div>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/register')}
-                className="w-full bg-white text-blue-600 font-semibold py-2 rounded-xl shadow border border-blue-500 transition hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              >
-                Register
-              </button>
             </form>
           ) : (
             <form onSubmit={handleVerifyMfa} className="space-y-6">
+              {/* OTP */}
               <div className="relative">
                 <input
                   type="text"
                   name="otp"
-                  placeholder=" "
+                  id="otp"
                   required
                   value={otp}
                   onChange={e => setOtp(e.target.value)}
-                  className="peer w-full border rounded-xl px-4 pt-6 pb-2 bg-transparent text-base placeholder-transparent focus:outline-none focus:border-green-500"
+                  className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
                   autoComplete="one-time-code"
                   inputMode="numeric"
                   maxLength={6}
+                  placeholder=" "
                 />
                 <label
-                  className="absolute left-4 top-2 text-gray-500 text-base transition-all duration-200
-                  peer-placeholder-shown:top-5 peer-placeholder-shown:text-base
-                  peer-placeholder-shown:text-gray-400
-                  peer-focus:top-2 peer-focus:text-sm peer-focus:text-green-600"
+                  htmlFor="otp"
+                  className={`absolute left-4 transition-all duration-200 pointer-events-none ${
+                    otp
+                      ? "text-xs top-1.5 text-emerald-700"
+                      : "top-6 text-base text-emerald-400"
+                  }`}
                 >
                   Enter 6-digit OTP
                 </label>
               </div>
               <button
-                className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white font-bold py-2 rounded-xl shadow-lg transition hover:scale-105 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-green-300"
+                className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg shadow-md transition hover:bg-emerald-700 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-emerald-200"
                 type="submit"
               >
                 Verify MFA
               </button>
-              <div className="flex items-center my-2">
-                <div className="flex-grow border-t border-gray-300"></div>
-                <span className="mx-2 text-gray-400 text-sm">or</span>
-                <div className="flex-grow border-t border-gray-300"></div>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate('/register')}
-                className="w-full bg-white text-blue-600 font-semibold py-2 rounded-xl shadow border border-blue-500 transition hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              >
-                Register
-              </button>
             </form>
           )}
-          <p className="text-center text-gray-500 mt-6">
+          <p className="text-center text-emerald-700 mt-6">
             Don&apos;t have an account?{" "}
             <button
               type="button"
-              className="text-blue-700 hover:underline font-semibold"
+              className="text-emerald-600 hover:underline font-semibold"
               onClick={() => navigate('/register')}
             >
               Register
