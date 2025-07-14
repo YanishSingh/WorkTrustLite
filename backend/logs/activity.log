@@ -1,0 +1,22 @@
+[2025-07-14T20:29:42.422Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"687568b53f2d8246c5bc4049","amount":100}
+[2025-07-14T20:32:04.558Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"687569433f2d8246c5bc4056","amount":500}
+[2025-07-14T20:33:36.464Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"6875699f3f2d8246c5bc4078","amount":600}
+[2025-07-14T20:42:50.523Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"68756bc93f2d8246c5bc4087","amount":1000}
+[2025-07-14T21:01:22.851Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"687570223f2d8246c5bc40b6","amount":500}
+[2025-07-14T21:12:18.630Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"687572b107d8bf836ae7a3ec","amount":5000}
+[2025-07-14T21:13:27.143Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"687572f603a9370fe983a38a","amount":6000}
+[2025-07-14T21:14:21.132Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"6875732c03a9370fe983a395","amount":20}
+[2025-07-14T21:28:24.687Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"6875767778afc86776cd0432","amount":200}
+[2025-07-14T21:46:14.066Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"68757aa51e11dd2544411261","amount":700}
+[2025-07-14T21:49:42.735Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"68757b756997cf9d68002e97","amount":800}
+[2025-07-14T21:53:41.583Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"68757c6488a658e5ad8db15b","amount":1000}
+[2025-07-14T21:54:40.138Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"68757c9f7fc6063e21ef5040","amount":1919}
+[2025-07-14T21:56:19.438Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"68757d027fc6063e21ef504b","amount":27272}
+[2025-07-14T21:56:53.009Z] User:687399ce970e9d96d8f1b9e8 Action:create_invoice Details:{"invoiceId":"68757d246195a703f60ec8c0","amount":9999}
+[2025-07-14T22:05:33.906Z] User:68757f116195a703f60ec8eb Action:create_invoice Details:{"invoiceId":"68757f2d6195a703f60ec8f3","amount":900}
+[2025-07-14T22:23:23.711Z] User:68757f116195a703f60ec8eb Action:create_invoice Details:{"invoiceId":"6875835a09e8ea05046bfabc","amount":700}
+[2025-07-14T22:23:32.225Z] User:{
+  _id: new ObjectId('68757f116195a703f60ec8eb'),
+  name: 'Bipin',
+  email: 'bipin@gmail.com'
+} Action:invoice_paid Details:{"invoiceId":"6875835a09e8ea05046bfabc","amount":700}

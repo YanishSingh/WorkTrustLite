@@ -128,3 +128,15 @@ exports.resetExpiredPassword = async (req, res) => {
     res.status(500).json({ msg: "Server error", error: err.message });
   }
 };
+
+exports.getFreelancers = async (req, res) => {
+  try {
+    const freelancers = await require('../models/User').find(
+      { role: 'freelancer' }, // filter by freelancer role
+      '_id name email' // only send these fields
+    );
+    res.json(freelancers);
+  } catch (err) {
+    res.status(500).json({ msg: 'Could not fetch freelancers' });
+  }
+};
