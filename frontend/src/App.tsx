@@ -6,7 +6,8 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
 import Invoice from './pages/Invoice';
-import Payment from './pages/Payment';
+import PaymentResult from './pages/PaymentResult';
+import PaymentHistory from './pages/Payment';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext'; // <-- Add this
 import { Toaster } from "sonner";
@@ -21,8 +22,9 @@ const App: React.FC = () => (
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/invoices" element={<ProtectedRoute><Invoice /></ProtectedRoute>} />
-        <Route path="/payment-success" element={<Payment status="success" />} />
-        <Route path="/payment-cancelled" element={<Payment status="cancelled" />} />
+        <Route path="/payment" element={<ProtectedRoute><PaymentHistory /></ProtectedRoute>} />
+        <Route path="/payment-success" element={<PaymentResult status="success" />} />
+        <Route path="/payment-cancelled" element={<PaymentResult status="cancelled" />} />
         <Route path="/change-password" element={<ChangePassword />} />
         <Route path="*" element={<Login />} />
       </Routes>

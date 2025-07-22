@@ -3,8 +3,11 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, token, passwordExpired } = useAuth();
+  const { user, token, passwordExpired, loading } = useAuth();
   const location = useLocation();
+
+  // Wait for auth context to finish loading
+  if (loading) return null;
 
   // If not authenticated, redirect to login
   if (!user || !token) {

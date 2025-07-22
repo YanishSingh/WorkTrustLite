@@ -20,3 +20,8 @@
   name: 'Bipin',
   email: 'bipin@gmail.com'
 } Action:invoice_paid Details:{"invoiceId":"6875835a09e8ea05046bfabc","amount":700}
+[2025-07-16T12:19:22.178Z] User:687787e7881027dab430cc11 Action:update_profile Details:{"fields":["_id","name","email","role","mfaEnabled","passwordChangedAt","passwordExpiry","loginCountSincePasswordChange","failedLoginAttempts","createdAt","updatedAt","__v","bio"]}
+[2025-07-16T12:27:08.199Z] User:687787e7881027dab430cc11 Action:create_invoice Details:{"invoiceId":"68779a98f599c81e4e24258c","amount":700}
+[2025-07-16T12:52:33.286Z] User:68779a44f599c81e4e242578 Action:pay_invoice Details:{"invoiceId":"68779a98f599c81e4e24258c","amount":700}
+[2025-07-16T12:55:03.825Z] User:68779a44f599c81e4e242578 Action:pay_invoice Details:{"invoiceId":"68779a98f599c81e4e24258c","amount":700}
+[2025-07-16T12:55:09.619Z] User:68779a44f599c81e4e242578 Action:invoice_paid Details:{"invoiceId":"68779a98f599c81e4e24258c","amount":700}

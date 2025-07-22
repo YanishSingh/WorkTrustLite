@@ -120,23 +120,15 @@ exports.login = async (req, res) => {
     user.loginCountSincePasswordChange = (user.loginCountSincePasswordChange || 0) + 1;
     await user.save();
 
-    // Issue JWT
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '2h' }
-    );
+    // Always require MFA after password check
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    user.mfaSecret = otpHash;
+    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+    await user.save();
+    await sendOTP(user.email, otp);
+    return res.json({ mfaRequired: true, email: user.email });
 
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        mfaEnabled: user.mfaEnabled,
-      },
-    });
   } catch (err) {
     res.status(500).json({ msg: 'Login failed', error: err.message });
   }

@@ -140,3 +140,15 @@ exports.getFreelancers = async (req, res) => {
     res.status(500).json({ msg: 'Could not fetch freelancers' });
   }
 };
+
+exports.getClients = async (req, res) => {
+  try {
+    const clients = await require('../models/User').find(
+      { role: 'client' },
+      '_id name email'
+    );
+    res.json(clients);
+  } catch (err) {
+    res.status(500).json({ msg: 'Could not fetch clients' });
+  }
+};

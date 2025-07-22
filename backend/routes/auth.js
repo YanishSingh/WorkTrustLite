@@ -2,16 +2,14 @@ const express = require('express');
 const router = express.Router();
 const { register, login } = require('../controllers/authController');
 const { requestMfa, verifyMfa } = require('../controllers/authController');
-const { loginLimiter } = require('../middleware/rateLimiter');
+const { loginLimiter, apiLimiter } = require('../middleware/rateLimiter');
 
-
-router.post('/register', register);
-router.post('/login', login);
-
-// routes for MFA, logout, password reset, etc.
-
-router.post('/request-mfa', requestMfa);
-router.post('/verify-mfa', verifyMfa);
+// Apply rate limiting to sensitive endpoints
+router.post('/register', apiLimiter, register);
 router.post('/login', loginLimiter, login);
+router.post('/request-mfa', loginLimiter, requestMfa);
+router.post('/verify-mfa', loginLimiter, verifyMfa);
+
+// (other routes, e.g., logout, password reset, etc.)
 
 module.exports = router;

@@ -5,6 +5,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/useAuth';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
 import { toast } from 'sonner';
+import BackToDashboardButton from '../components/BackToDashboardButton';
 
 interface ProfileResponse {
   name: string;
@@ -69,20 +70,35 @@ const Profile: React.FC = () => {
   };
 
   return (
-    <div className="max-w-xl mx-auto mt-12">
-      <div className="rounded-2xl shadow-2xl p-8 border border-gray-100 bg-white/90">
-        <div className="flex flex-col items-center mb-4">
-          {profile.avatar ? (
-            <img src={profile.avatar} alt="avatar" className="w-20 h-20 rounded-full mb-2 shadow" />
-          ) : (
-            <span className="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-600 to-blue-400 flex items-center justify-center text-white font-bold text-2xl mb-2 shadow">
-              {profile.name.charAt(0) || user?.name.charAt(0) || "U"}
-            </span>
-          )}
+    <div className="max-w-xl mx-auto mt-12 px-2">
+      <div className="rounded-2xl shadow-2xl p-8 border border-gray-100 bg-white/90 flex flex-col gap-8">
+        <BackToDashboardButton />
+        {/* Profile Info Section */}
+        <div className="flex flex-col items-center mb-2 gap-2">
+          <div className="relative mb-2">
+            {profile.avatar ? (
+              <img src={profile.avatar} alt="avatar" className="w-24 h-24 rounded-full border-4 border-emerald-100 shadow-lg object-cover" />
+            ) : (
+              <span className="w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-600 to-blue-400 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
+                {profile.name.charAt(0) || user?.name.charAt(0) || "U"}
+              </span>
+            )}
+            <button
+              type="button"
+              className="absolute bottom-1 right-1 bg-white border border-emerald-200 rounded-full p-1 shadow hover:bg-emerald-50 transition text-emerald-600"
+              title="Change avatar (coming soon)"
+              tabIndex={-1}
+              disabled
+            >
+              <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2"/><path d="M4 20v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2" stroke="currentColor" strokeWidth="2"/><path d="M16 7V6a4 4 0 1 0-8 0v1" stroke="currentColor" strokeWidth="2"/></svg>
+            </button>
+          </div>
           <h2 className="text-2xl font-extrabold text-emerald-800">{profile.name}</h2>
-          <p className="text-emerald-500">{profile.email}</p>
+          <p className="text-emerald-500 text-sm">{profile.email}</p>
         </div>
-        <form onSubmit={handleUpdate} className="space-y-4">
+
+        {/* Edit Profile Section */}
+        <form onSubmit={handleUpdate} className="space-y-5">
           <div>
             <label className="block font-semibold text-emerald-700 mb-1">Name</label>
             <input
@@ -116,45 +132,55 @@ const Profile: React.FC = () => {
               rows={2}
             />
           </div>
-          <div className="flex gap-3 mt-2">
+          <div className="flex flex-wrap gap-3 mt-2 items-center">
             {!editing ? (
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="bg-gradient-to-tr from-emerald-600 to-blue-400 text-white font-bold py-2 px-6 rounded-lg shadow hover:from-emerald-700 hover:to-blue-500"
+                className="bg-gradient-to-tr from-emerald-600 to-blue-400 text-white font-bold py-2 px-6 rounded-lg shadow hover:from-emerald-700 hover:to-blue-500 flex items-center gap-2"
               >
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M16.862 5.487a2.06 2.06 0 0 1 2.916 2.914l-9.75 9.75-3.25.336.336-3.25 9.75-9.75Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
                 Edit Profile
               </button>
             ) : (
               <>
                 <button
                   type="submit"
-                  className="bg-gradient-to-tr from-emerald-600 to-blue-400 text-white font-bold py-2 px-6 rounded-lg shadow hover:from-emerald-700 hover:to-blue-500"
+                  className="bg-gradient-to-tr from-emerald-600 to-blue-400 text-white font-bold py-2 px-6 rounded-lg shadow hover:from-emerald-700 hover:to-blue-500 flex items-center gap-2"
                 >
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Save Changes
                 </button>
                 <button
                   type="button"
                   onClick={() => { setEditing(false); setProfile({ ...profile }); }}
-                  className="bg-gray-100 border border-gray-300 text-emerald-700 font-bold py-2 px-6 rounded-lg shadow"
+                  className="bg-gray-100 border border-gray-300 text-emerald-700 font-bold py-2 px-6 rounded-lg shadow flex items-center gap-2"
                 >
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                   Cancel
                 </button>
               </>
             )}
+            <span className="flex-1" />
             <button
               type="button"
               onClick={() => setChangingPwd(v => !v)}
-              className="ml-auto text-emerald-700 underline font-semibold hover:text-blue-500"
+              className="text-emerald-700 underline font-semibold hover:text-blue-500 flex items-center gap-1"
             >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M12 17v.01M7 7v-.01M17 7v-.01M7 17v-.01M17 17v-.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="2"/></svg>
               {changingPwd ? "Close Password Change" : "Change Password"}
             </button>
           </div>
         </form>
 
+        {/* Divider */}
+        <div className="border-t border-emerald-100 my-4" />
+
         {/* Password Change */}
         {changingPwd && (
-          <form onSubmit={handlePwdChange} className="space-y-4 mt-8">
+          <form onSubmit={handlePwdChange} className="space-y-4 mt-2">
+            <h3 className="text-lg font-bold text-emerald-700 mb-2">Change Password</h3>
+            <div className="text-xs text-emerald-500 mb-2">Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.</div>
             <div>
               <label className="block font-semibold text-emerald-700 mb-1">Current Password</label>
               <input

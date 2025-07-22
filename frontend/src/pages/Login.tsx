@@ -19,6 +19,7 @@ interface LoginResponse {
   passwordReuseLimit?: boolean;
   password_expired?: boolean; // backend may use snake_case
   msg?: string;
+  mfaRequired?: boolean; // Added for new MFA flow
 }
 
 const Login: React.FC = () => {
@@ -52,12 +53,15 @@ const Login: React.FC = () => {
         return;
       }
 
-      // MFA
-      if (res.data.user?.mfaEnabled) {
+      // MFA by default
+      if (res.data.mfaRequired) {
         setMfaRequired(true);
-        await api.post("/auth/request-mfa", { email: form.email });
         toast.info("Multi-factor authentication required. Check your email for the OTP.");
-      } else {
+        return;
+      }
+
+      // (legacy: if backend ever returns token directly)
+      if (res.data.user && res.data.token) {
         login(res.data.user, res.data.token, false);
         toast.success("Login successful! Redirecting...");
         navigate("/dashboard");

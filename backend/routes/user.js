@@ -4,7 +4,8 @@ const {
   getProfile, 
   updateProfile, 
   resetExpiredPassword, 
-  getFreelancers // <-- Add this controller function!
+  getFreelancers,
+  getClients // <-- Add this controller function!
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -17,5 +18,8 @@ router.put('/reset-password-expired', resetExpiredPassword);
 
 // === GET all freelancers for dropdown ===
 router.get('/freelancers', protect, getFreelancers); // <-- New endpoint!
+
+// === GET all clients for dropdown ===
+router.get('/clients', protect, require('../controllers/userController').getClients);
 
 module.exports = router;

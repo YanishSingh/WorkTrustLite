@@ -1,10 +1,41 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { useNavigate } from 'react-router-dom';
+import api from '../api/axios';
+
+interface Invoice {
+  _id: string;
+  amount: number;
+  status: string;
+}
 
 const Dashboard: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const navigate = useNavigate();
+  const [summary, setSummary] = useState({
+    total: 0,
+    paid: 0,
+    unpaid: 0,
+    earned: 0,
+  });
+
+  useEffect(() => {
+    if (user?.role !== 'freelancer') return;
+    api.get<Invoice[]>('/invoice/freelancer', { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => {
+        const invoices = res.data;
+        const paid = invoices.filter(i => i.status === 'paid');
+        const unpaid = invoices.filter(i => i.status !== 'paid');
+        setSummary({
+          total: invoices.length,
+          paid: paid.length,
+          unpaid: unpaid.length,
+          earned: paid.reduce((sum, i) => sum + (i.amount || 0), 0),
+        });
+      })
+      .catch(() => setSummary({ total: 0, paid: 0, unpaid: 0, earned: 0 }));
+  }, [user, token]);
+
   if (!user) return null;
 
   return (
@@ -50,6 +81,40 @@ const Dashboard: React.FC = () => {
         </div>
       </section>
 
+      {/* Freelancer summary cards */}
+      {user.role === 'freelancer' && (
+        <section className="max-w-5xl mx-auto px-6 py-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="bg-white rounded-xl shadow p-5 flex flex-col items-center border-t-4 border-emerald-400">
+            <span className="text-emerald-500 mb-2">
+              <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path d="M12 21c4.97 0 9-4.03 9-9 0-4.97-4.03-9-9-9S3 7.03 3 12c0 4.97 4.03 9 9 9Z" stroke="currentColor" strokeWidth="2"/><path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            </span>
+            <div className="text-2xl font-bold text-emerald-700">{summary.total}</div>
+            <div className="text-emerald-500 font-medium mt-1">Total Invoices</div>
+          </div>
+          <div className="bg-white rounded-xl shadow p-5 flex flex-col items-center border-t-4 border-green-400">
+            <span className="text-green-500 mb-2">
+              <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </span>
+            <div className="text-2xl font-bold text-green-700">{summary.paid}</div>
+            <div className="text-green-500 font-medium mt-1">Paid</div>
+          </div>
+          <div className="bg-white rounded-xl shadow p-5 flex flex-col items-center border-t-4 border-yellow-400">
+            <span className="text-yellow-500 mb-2">
+              <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/><path d="M8 12h4l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            </span>
+            <div className="text-2xl font-bold text-yellow-700">{summary.unpaid}</div>
+            <div className="text-yellow-500 font-medium mt-1">Unpaid</div>
+          </div>
+          <div className="bg-white rounded-xl shadow p-5 flex flex-col items-center border-t-4 border-blue-400">
+            <span className="text-blue-500 mb-2">
+              <svg width="32" height="32" fill="none" viewBox="0 0 24 24"><path d="M12 21c4.97 0 9-4.03 9-9 0-4.97-4.03-9-9-9S3 7.03 3 12c0 4.97 4.03 9 9 9Z" stroke="currentColor" strokeWidth="2"/><path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            </span>
+            <div className="text-2xl font-bold text-blue-700">${summary.earned}</div>
+            <div className="text-blue-500 font-medium mt-1">Total Earned</div>
+          </div>
+        </section>
+      )}
+
       {/* Action buttons */}
       <section className="max-w-5xl mx-auto px-6 py-8 flex flex-wrap gap-4 justify-center">
         <button
@@ -85,7 +150,7 @@ const Dashboard: React.FC = () => {
               View Invoices
             </button>
             <button
-              onClick={() => navigate('/invoices?history=1')}
+              onClick={() => navigate('/payment')}
               className="px-5 py-2 bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-600 shadow-sm transition"
             >
               Payment History

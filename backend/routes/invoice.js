@@ -1,12 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { createInvoice, getInvoices } = require('../controllers/invoiceController');
+const {
+  createInvoice,
+  getFreelancerInvoices,
+  getClientInvoices
+} = require('../controllers/invoiceController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
-// Client creates invoice
-router.post('/', protect, authorize('client'), createInvoice);
+// Freelancer creates invoice for client
+router.post('/', protect, authorize('freelancer'), createInvoice);
 
-// Client/Freelancer view invoices
-router.get('/', protect, getInvoices);
+// Freelancer views invoices they created
+router.get('/freelancer', protect, authorize('freelancer'), getFreelancerInvoices);
+
+// Client views invoices assigned to them
+router.get('/client', protect, authorize('client'), getClientInvoices);
 
 module.exports = router;
