@@ -88,35 +88,76 @@ exports.register = async (req, res) => {
   }
 };
 
+/**
+ * User Login Controller
+ * Handles user authentication with comprehensive security checks
+ */
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'Invalid credentials.' });
 
-    // Lockout check
+    // Input validation
+    if (!email || !password) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Email and password are required' 
+      });
+    }
+
+    // Find user by email (case-insensitive)
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Log failed login attempt
+      logActivity(null, 'failed_login_attempt', { email, reason: 'user_not_found' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: MESSAGES.INVALID_CREDENTIALS 
+      });
+    }
+
+    // Check if account is locked
     if (user.accountLockedUntil && user.accountLockedUntil > new Date()) {
-      return res.status(403).json({ msg: 'Account locked. Try again later.' });
+      logActivity(user._id, 'blocked_login_attempt', { reason: 'account_locked' });
+      return res.status(HTTP_STATUS.FORBIDDEN).json({ 
+        msg: MESSAGES.ACCOUNT_LOCKED 
+      });
     }
 
-    // Password check (must happen before increment)
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
+    // Verify password
+    const isPasswordValid = await comparePassword(password, user.password);
+    if (!isPasswordValid) {
+      // Increment failed attempts
       user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-      if (user.failedLoginAttempts >= 5) {
-        user.accountLockedUntil = new Date(Date.now() + 10 * 60 * 1000);
+      
+      // Lock account if max attempts reached
+      if (user.failedLoginAttempts >= ACCOUNT_LOCKOUT.MAX_FAILED_ATTEMPTS) {
+        user.accountLockedUntil = new Date(
+          Date.now() + ACCOUNT_LOCKOUT.LOCKOUT_DURATION_MINUTES * 60 * 1000
+        );
         user.failedLoginAttempts = 0;
+        logActivity(user._id, 'account_locked', { 
+          reason: 'max_failed_attempts',
+          lockoutUntil: user.accountLockedUntil 
+        });
       }
+      
       await user.save();
-      return res.status(400).json({ msg: 'Invalid credentials.' });
+      logActivity(user._id, 'failed_login_attempt', { 
+        reason: 'invalid_password',
+        failedAttempts: user.failedLoginAttempts 
+      });
+      
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: MESSAGES.INVALID_CREDENTIALS 
+      });
     }
 
-    // Password expiry by date
-    if (user.passwordExpiry && user.passwordExpiry < new Date()) {
-      // Return 200 OK so frontend can redirect
-      return res.status(200).json({
-        msg: 'Password expired. Please change your password.',
+    // Check password expiry
+    const expiryCheck = checkPasswordExpiry(user);
+    if (expiryCheck.expired) {
+      logActivity(user._id, 'password_expiry_detected', { reason: expiryCheck.reason });
+      return res.status(HTTP_STATUS.OK).json({
+        msg: expiryCheck.message,
         passwordExpired: true,
+        passwordReuseLimit: expiryCheck.reason === 'usage',
         user: {
           id: user._id,
           name: user.name,
@@ -127,87 +168,158 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Password expiry by login count (5 logins)
-    if (
-      typeof user.loginCountSincePasswordChange === 'number' &&
-      user.loginCountSincePasswordChange >= MAX_LOGIN_BEFORE_EXPIRY
-    ) {
-      // Return 200 OK so frontend can redirect
-      return res.status(200).json({
-        msg: 'Password expired after 5 logins. Please change your password.',
-        passwordExpired: true,
-        passwordReuseLimit: true,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          mfaEnabled: user.mfaEnabled,
-        }
-      });
-    }
-
-    // Reset failed attempts and increment login count (after passing expiry checks)
+    // Reset failed attempts and update login count
     user.failedLoginAttempts = 0;
     user.loginCountSincePasswordChange = (user.loginCountSincePasswordChange || 0) + 1;
     await user.save();
 
-    // Always require MFA after password check
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate and send MFA OTP
+    const otp = Math.floor(
+      Math.pow(10, MFA.OTP_LENGTH - 1) + 
+      Math.random() * (Math.pow(10, MFA.OTP_LENGTH) - Math.pow(10, MFA.OTP_LENGTH - 1))
+    ).toString();
+    
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     user.mfaSecret = otpHash;
-    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+    user.otpExpiry = Date.now() + MFA.OTP_EXPIRY_MINUTES * 60 * 1000;
     await user.save();
+
+    // Send OTP via email
     await sendOTP(user.email, otp);
-    return res.json({ mfaRequired: true, email: user.email });
+    
+    // Log successful password verification
+    logActivity(user._id, 'login_password_verified', { mfaRequired: true });
+
+    return res.json({ 
+      mfaRequired: true, 
+      email: user.email,
+      msg: 'Please check your email for the verification code'
+    });
 
   } catch (err) {
-    res.status(500).json({ msg: 'Login failed', error: err.message });
+    console.error('Login error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Login failed. Please try again.' 
+    });
   }
 };
 
-// MFA: Generate and send OTP
+/**
+ * MFA OTP Request Controller
+ * Generates and sends OTP for multi-factor authentication
+ */
 exports.requestMfa = async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ msg: 'User not found.' });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Input validation
+    if (!email) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Email is required' 
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Don't reveal if user exists for security
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: MESSAGES.USER_NOT_FOUND 
+      });
+    }
+
+    // Generate secure OTP
+    const otp = Math.floor(
+      Math.pow(10, MFA.OTP_LENGTH - 1) + 
+      Math.random() * (Math.pow(10, MFA.OTP_LENGTH) - Math.pow(10, MFA.OTP_LENGTH - 1))
+    ).toString();
+    
     const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
     user.mfaSecret = otpHash;
-    user.otpExpiry = Date.now() + 5 * 60 * 1000;
+    user.otpExpiry = Date.now() + MFA.OTP_EXPIRY_MINUTES * 60 * 1000;
     await user.save();
 
+    // Send OTP via email
     await sendOTP(email, otp);
-    res.json({ msg: 'OTP sent to email.' });
+    
+    // Log OTP request
+    logActivity(user._id, 'mfa_otp_requested', { email });
+
+    res.json({ msg: 'Verification code sent to your email' });
+
   } catch (err) {
-    res.status(500).json({ msg: 'Failed to send OTP', error: err.message });
+    console.error('MFA request error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Failed to send verification code. Please try again.' 
+    });
   }
 };
 
-// MFA: Verify OTP
+/**
+ * MFA OTP Verification Controller
+ * Verifies OTP and completes authentication process
+ */
 exports.verifyMfa = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    const user = await User.findOne({ email });
-    if (!user || !user.mfaSecret) return res.status(400).json({ msg: 'No MFA requested.' });
 
-    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
-    if (user.otpExpiry < Date.now()) return res.status(400).json({ msg: 'OTP expired.' });
+    // Input validation
+    if (!email || !otp) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Email and verification code are required' 
+      });
+    }
 
-    if (user.mfaSecret !== otpHash) return res.status(400).json({ msg: 'Invalid OTP.' });
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user || !user.mfaSecret) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'No verification process found. Please request a new code.' 
+      });
+    }
 
+    // Check OTP expiry
+    if (user.otpExpiry < Date.now()) {
+      // Clean up expired OTP
+      user.mfaSecret = undefined;
+      user.otpExpiry = undefined;
+      await user.save();
+      
+      logActivity(user._id, 'mfa_otp_expired', {});
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: MESSAGES.OTP_EXPIRED 
+      });
+    }
+
+    // Verify OTP
+    const otpHash = crypto.createHash('sha256').update(otp.toString()).digest('hex');
+    if (user.mfaSecret !== otpHash) {
+      logActivity(user._id, 'mfa_otp_invalid', { otp: otp.substring(0, 2) + '***' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: MESSAGES.OTP_INVALID 
+      });
+    }
+
+    // Clean up MFA data
     user.mfaSecret = undefined;
     user.otpExpiry = undefined;
     await user.save();
 
+    // Generate JWT token
     const token = jwt.sign(
       { id: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: '2h' }
+      { expiresIn: JWT.EXPIRY }
     );
+
+    // Log successful login
+    logActivity(user._id, 'login_successful', { 
+      loginMethod: 'email_password_mfa',
+      userAgent: req.headers['user-agent']
+    });
+
     res.json({
+      success: true,
       token,
       user: {
         id: user._id,
@@ -216,8 +328,13 @@ exports.verifyMfa = async (req, res) => {
         role: user.role,
         mfaEnabled: user.mfaEnabled,
       },
+      msg: MESSAGES.LOGIN_SUCCESS
     });
+
   } catch (err) {
-    res.status(500).json({ msg: 'OTP verification failed', error: err.message });
+    console.error('MFA verification error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Verification failed. Please try again.' 
+    });
   }
 };
