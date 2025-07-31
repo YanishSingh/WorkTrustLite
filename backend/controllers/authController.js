@@ -1,58 +1,90 @@
 const User = require('../models/User');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const zxcvbn = require('zxcvbn');
-const { sendOTP } = require('../utils/mailer');
 const crypto = require('crypto');
+const { sendOTP } = require('../utils/mailer');
+const { logActivity } = require('../utils/logger');
+const { 
+  validateNewPassword, 
+  hashPassword, 
+  comparePassword, 
+  checkPasswordExpiry 
+} = require('../utils/passwordValidator');
+const { 
+  PASSWORD, 
+  ACCOUNT_LOCKOUT, 
+  MFA, 
+  JWT, 
+  MESSAGES, 
+  HTTP_STATUS 
+} = require('../config/constants');
 
-const PASSWORD_EXPIRY_DAYS = 90;
-const PASSWORD_HISTORY_LENGTH = 5;
-const MAX_LOGIN_BEFORE_EXPIRY = 5;
-
-// REGISTER
+/**
+ * User Registration Controller
+ * Handles new user registration with comprehensive security validation
+ */
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Password policy
-    if (!password || password.length < 8 || password.length > 32)
-      return res.status(400).json({ msg: 'Password must be 8-32 characters.' });
+    // Input validation
+    if (!name || !email || !password || !role) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'All fields are required' 
+      });
+    }
 
-    const result = zxcvbn(password);
-    if (result.score < 3)
-      return res.status(400).json({ msg: 'Password too weak. Use upper, lower, numbers, symbols.' });
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Please provide a valid email address' 
+      });
+    }
 
-    const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
-    if (!pattern.test(password))
-      return res.status(400).json({ msg: 'Password must have upper, lower, number, symbol.' });
+    // Password validation using centralized utility
+    const passwordError = await validateNewPassword(null, password);
+    if (passwordError) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ msg: passwordError });
+    }
 
-    // Existing user
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ msg: 'Email already registered.' });
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: MESSAGES.EMAIL_ALREADY_EXISTS 
+      });
+    }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
+    // Hash password securely
+    const hashedPassword = await hashPassword(password);
 
-    // Set expiry and login count
-    const expiryDate = new Date(Date.now() + PASSWORD_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-
+    // Create new user with security defaults
     const user = new User({
-      name,
-      email,
+      name: name.trim(),
+      email: email.toLowerCase(),
       password: hashedPassword,
       role,
       passwordHistory: [hashedPassword],
       passwordChangedAt: new Date(),
-      passwordExpiry: expiryDate,
+      passwordExpiry: new Date(Date.now() + PASSWORD.EXPIRY_DAYS * 24 * 60 * 60 * 1000),
       loginCountSincePasswordChange: 0,
       failedLoginAttempts: 0,
     });
+
     await user.save();
 
-    res.status(201).json({ msg: 'Registration successful!' });
+    // Log successful registration
+    logActivity(user._id, 'user_registration', { email: user.email, role: user.role });
+
+    res.status(HTTP_STATUS.CREATED).json({ 
+      msg: MESSAGES.REGISTRATION_SUCCESS 
+    });
+
   } catch (err) {
-    res.status(500).json({ msg: 'Registration failed', error: err.message });
+    console.error('Registration error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Registration failed. Please try again.' 
+    });
   }
 };
 
