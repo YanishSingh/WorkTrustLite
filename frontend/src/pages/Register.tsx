@@ -220,20 +220,20 @@ const Register: React.FC = () => {
               <ul className="text-xs mt-2 text-emerald-600 space-y-1">
                 <li className={`flex items-center gap-1 transition-all duration-200 ${form.password.length >= PASSWORD_CONFIG.MIN_LENGTH ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
                   {form.password.length >= PASSWORD_CONFIG.MIN_LENGTH ? 
-                    <FaCheckCircle className="inline text-green-500" /> : 
-                    <FaTimesCircle className="inline text-red-400" />
+                    <FaCheckCircle color="green" size={14} /> : 
+                    <FaTimesCircle color="red" size={14} />
                   }• At least {PASSWORD_CONFIG.MIN_LENGTH} characters
                 </li>
                 <li className={`flex items-center gap-1 transition-all duration-200 ${(form.password.length <= PASSWORD_CONFIG.MAX_LENGTH && form.password.length > 0) ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
                   {(form.password.length <= PASSWORD_CONFIG.MAX_LENGTH && form.password.length > 0) ? 
-                    <FaCheckCircle className="inline text-green-500" /> : 
-                    <FaTimesCircle className="inline text-red-400" />
+                    <FaCheckCircle color="green" size={14} /> : 
+                    <FaTimesCircle color="red" size={14} />
                   }• No more than {PASSWORD_CONFIG.MAX_LENGTH} characters
                 </li>
                 <li className={`flex items-center gap-1 transition-all duration-200 ${PASSWORD_CONFIG.PATTERN.test(form.password) ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
                   {PASSWORD_CONFIG.PATTERN.test(form.password) ? 
-                    <FaCheckCircle className="inline text-green-500" /> : 
-                    <FaTimesCircle className="inline text-red-400" />
+                    <FaCheckCircle color="green" size={14} /> : 
+                    <FaTimesCircle color="red" size={14} />
                   }• Uppercase, lowercase, number, symbol
                 </li>
               </ul>
