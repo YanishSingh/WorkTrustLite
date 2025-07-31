@@ -1,53 +1,111 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from "react";
 import api from "../api/axios";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { FaCheckCircle, FaTimesCircle } from "react-icons/fa";
+import { 
+  PASSWORD_CONFIG, 
+  USER_ROLES, 
+  API_ENDPOINTS, 
+  VALIDATION_MESSAGES, 
+  UI_CONFIG 
+} from "../utils/constants";
 
-const PASSWORD_MIN = 8;
-const PASSWORD_MAX = 32;
-const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
+interface FormData {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+}
+
+interface TouchedFields {
+  password: boolean;
+  confirm: boolean;
+}
 
 const Register: React.FC = () => {
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "client" });
+  const [form, setForm] = useState<FormData>({ 
+    name: "", 
+    email: "", 
+    password: "", 
+    role: USER_ROLES.CLIENT 
+  });
   const [confirm, setConfirm] = useState("");
-  const [touched, setTouched] = useState({ password: false, confirm: false });
+  const [touched, setTouched] = useState<TouchedFields>({ password: false, confirm: false });
   const [showPwdWarning, setShowPwdWarning] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  const passwordValid =
-    form.password.length >= PASSWORD_MIN &&
-    form.password.length <= PASSWORD_MAX &&
-    passwordPattern.test(form.password);
-  const passwordsMatch = form.password === confirm && confirm.length > 0;
+  // Validation functions
+  const isPasswordValid = 
+    form.password.length >= PASSWORD_CONFIG.MIN_LENGTH &&
+    form.password.length <= PASSWORD_CONFIG.MAX_LENGTH &&
+    PASSWORD_CONFIG.PATTERN.test(form.password);
+  
+  const doPasswordsMatch = form.password === confirm && confirm.length > 0;
+  
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
+  
+  const isFormValid = 
+    form.name.trim().length > 0 && 
+    isEmailValid && 
+    isPasswordValid && 
+    doPasswordsMatch;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, password: e.target.value });
+    setForm(prev => ({ ...prev, password: e.target.value }));
     if (!showPwdWarning) setShowPwdWarning(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!passwordValid) {
-      toast.error("Password does not meet requirements");
+    
+    // Prevent double submission
+    if (isSubmitting) return;
+    
+    // Final validation
+    if (!isFormValid) {
+      if (!isPasswordValid) {
+        toast.error(VALIDATION_MESSAGES.PASSWORD_TOO_WEAK);
+        return;
+      }
+      if (!doPasswordsMatch) {
+        toast.error(VALIDATION_MESSAGES.PASSWORDS_NO_MATCH);
+        return;
+      }
+      if (!isEmailValid) {
+        toast.error(VALIDATION_MESSAGES.INVALID_EMAIL);
+        return;
+      }
       return;
     }
-    if (!passwordsMatch) {
-      toast.error("Passwords do not match");
-      return;
-    }
+    
+    setIsSubmitting(true);
+    
     try {
-      await api.post("/auth/register", form);
-      toast.success("Registration successful! Please login.");
-      setTimeout(() => navigate("/login"), 1500);
-    } catch (err: any) {
-      toast.error(err.response?.data?.msg || "Registration failed");
+      // Prepare clean form data
+      const registrationData = {
+        ...form,
+        name: form.name.trim(),
+        email: form.email.toLowerCase().trim()
+      };
+      
+      await api.post(API_ENDPOINTS.AUTH.REGISTER, registrationData);
+      toast.success(VALIDATION_MESSAGES.REGISTRATION_SUCCESS);
+      
+      setTimeout(() => navigate("/login"), UI_CONFIG.REDIRECT_DELAY);
+      
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { msg?: string } } };
+      toast.error(err.response?.data?.msg || "Registration failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -122,8 +180,8 @@ const Register: React.FC = () => {
                 className="block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition"
                 required
               >
-                <option value="client">Client</option>
-                <option value="freelancer">Freelancer</option>
+                <option value={USER_ROLES.CLIENT}>Client</option>
+                <option value={USER_ROLES.FREELANCER}>Freelancer</option>
               </select>
               <label
                 htmlFor="role"
@@ -141,12 +199,12 @@ const Register: React.FC = () => {
                 required
                 value={form.password}
                 onChange={handlePasswordChange}
-                onBlur={() => { setTouched(t => ({ ...t, password: true })); setShowPwdWarning(true); }}
-                className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent ${showPwdWarning && !passwordValid && form.password ? "border-red-400" : ""}`}
+                onBlur={() => { setTouched(prev => ({ ...prev, password: true })); setShowPwdWarning(true); }}
+                className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent ${showPwdWarning && !isPasswordValid && form.password ? "border-red-400" : ""}`}
                 autoComplete="new-password"
                 placeholder=" "
-                minLength={PASSWORD_MIN}
-                maxLength={PASSWORD_MAX}
+                minLength={PASSWORD_CONFIG.MIN_LENGTH}
+                maxLength={PASSWORD_CONFIG.MAX_LENGTH}
               />
               <label
                 htmlFor="password"
@@ -160,17 +218,26 @@ const Register: React.FC = () => {
               </label>
               <PasswordStrengthMeter password={form.password} />
               <ul className="text-xs mt-2 text-emerald-600 space-y-1">
-                <li className={`flex items-center gap-1 transition-all duration-200 ${form.password.length >= PASSWORD_MIN ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
-                  {form.password.length >= PASSWORD_MIN ? <FaCheckCircle className="inline text-green-500" /> : <FaTimesCircle className="inline text-red-400" />}• At least {PASSWORD_MIN} characters
+                <li className={`flex items-center gap-1 transition-all duration-200 ${form.password.length >= PASSWORD_CONFIG.MIN_LENGTH ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
+                  {form.password.length >= PASSWORD_CONFIG.MIN_LENGTH ? 
+                    <FaCheckCircle className="inline text-green-500" /> : 
+                    <FaTimesCircle className="inline text-red-400" />
+                  }• At least {PASSWORD_CONFIG.MIN_LENGTH} characters
                 </li>
-                <li className={`flex items-center gap-1 transition-all duration-200 ${(form.password.length <= PASSWORD_MAX && form.password.length > 0) ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
-                  {(form.password.length <= PASSWORD_MAX && form.password.length > 0) ? <FaCheckCircle className="inline text-green-500" /> : <FaTimesCircle className="inline text-red-400" />}• No more than {PASSWORD_MAX} characters
+                <li className={`flex items-center gap-1 transition-all duration-200 ${(form.password.length <= PASSWORD_CONFIG.MAX_LENGTH && form.password.length > 0) ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
+                  {(form.password.length <= PASSWORD_CONFIG.MAX_LENGTH && form.password.length > 0) ? 
+                    <FaCheckCircle className="inline text-green-500" /> : 
+                    <FaTimesCircle className="inline text-red-400" />
+                  }• No more than {PASSWORD_CONFIG.MAX_LENGTH} characters
                 </li>
-                <li className={`flex items-center gap-1 transition-all duration-200 ${passwordPattern.test(form.password) ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
-                  {passwordPattern.test(form.password) ? <FaCheckCircle className="inline text-green-500" /> : <FaTimesCircle className="inline text-red-400" />}• Uppercase, lowercase, number, symbol
+                <li className={`flex items-center gap-1 transition-all duration-200 ${PASSWORD_CONFIG.PATTERN.test(form.password) ? "text-green-600 animate-pulse" : "text-emerald-600"}`}>
+                  {PASSWORD_CONFIG.PATTERN.test(form.password) ? 
+                    <FaCheckCircle className="inline text-green-500" /> : 
+                    <FaTimesCircle className="inline text-red-400" />
+                  }• Uppercase, lowercase, number, symbol
                 </li>
               </ul>
-              {showPwdWarning && form.password && !passwordValid && (
+              {showPwdWarning && form.password && !isPasswordValid && (
                 <div className="text-xs text-red-500 mt-2 animate-shake">Password does not meet all requirements.</div>
               )}
               <div className="text-xs text-emerald-400 mt-1">Password reuse is prevented and expiry is enforced for your security.</div>
@@ -183,7 +250,7 @@ const Register: React.FC = () => {
                 required
                 value={confirm}
                 onChange={e => setConfirm(e.target.value)}
-                onBlur={() => setTouched(t => ({ ...t, confirm: true }))}
+                onBlur={() => setTouched(prev => ({ ...prev, confirm: true }))}
                 className={`block w-full rounded-lg border border-gray-200 bg-white px-4 pt-6 pb-2 text-base focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition placeholder-transparent`}
                 autoComplete="new-password"
                 placeholder=" "
@@ -198,17 +265,21 @@ const Register: React.FC = () => {
               >
                 Confirm Password
               </label>
-              {touched.confirm && !passwordsMatch && (
-                <div className="text-xs text-red-500 mt-1">Passwords do not match</div>
+              {touched.confirm && !doPasswordsMatch && (
+                <div className="text-xs text-red-500 mt-1">{VALIDATION_MESSAGES.PASSWORDS_NO_MATCH}</div>
               )}
             </div>
 
             <button
-              className="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg shadow-md transition hover:bg-emerald-700 hover:shadow-xl active:scale-98 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              className={`w-full font-bold py-2 rounded-lg shadow-md transition focus:outline-none focus:ring-2 focus:ring-emerald-200 ${
+                isFormValid && !isSubmitting
+                  ? 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-xl active:scale-98 text-white'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
               type="submit"
-              disabled={!passwordValid || !passwordsMatch}
+              disabled={!isFormValid || isSubmitting}
             >
-              Register
+              {isSubmitting ? 'Creating Account...' : 'Register'}
             </button>
           </form>
           <p className="text-center text-emerald-700 mt-6">
