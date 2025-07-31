@@ -35,39 +35,91 @@ exports.getProfile = async (req, res) => {
   }
 };
 
-// UPDATE user profile (fields + password)
+/**
+ * Update User Profile Controller
+ * Updates user profile information and optionally changes password
+ */
 exports.updateProfile = async (req, res) => {
-  const { name, bio, avatar, password, currentPassword } = req.body;
-  const user = await User.findById(req.user.id);
-  if (!user) return res.status(404).json({ msg: 'User not found.' });
+  try {
+    const { name, bio, avatar, password, currentPassword } = req.body;
+    
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ 
+        msg: MESSAGES.USER_NOT_FOUND 
+      });
+    }
 
-  // Fields
-  if (name) user.name = name;
-  if (bio) user.bio = bio;
-  if (avatar) user.avatar = avatar;
+    // Track which fields are being updated
+    const updatedFields = [];
 
-  // Password change logic
-  if (password) {
-    if (!currentPassword)
-      return res.status(400).json({ msg: 'Current password required.' });
-    if (!(await bcrypt.compare(currentPassword, user.password)))
-      return res.status(400).json({ msg: 'Current password incorrect.' });
+    // Update profile fields
+    if (name && name.trim() !== user.name) {
+      user.name = name.trim();
+      updatedFields.push('name');
+    }
+    
+    if (bio !== undefined && bio !== user.bio) {
+      user.bio = bio ? bio.trim() : '';
+      updatedFields.push('bio');
+    }
+    
+    if (avatar !== undefined && avatar !== user.avatar) {
+      user.avatar = avatar;
+      updatedFields.push('avatar');
+    }
 
-    const msg = await validateNewPassword(user, password);
-    if (msg) return res.status(400).json({ msg });
+    // Handle password change
+    if (password) {
+      // Verify current password is provided
+      if (!currentPassword) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+          msg: MESSAGES.CURRENT_PASSWORD_REQUIRED 
+        });
+      }
 
-    // Hash & update history (keep 5)
-    const newHash = await bcrypt.hash(password, 12);
-    user.passwordHistory = [...(user.passwordHistory || []).slice(-4), user.password]; // 4+1
-    user.password = newHash;
-    user.passwordChangedAt = new Date();
-    user.passwordExpiry = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-    user.loginCountSincePasswordChange = 0; // Reset login count
+      // Verify current password is correct
+      const isCurrentPasswordValid = await comparePassword(currentPassword, user.password);
+      if (!isCurrentPasswordValid) {
+        logActivity(user._id, 'failed_password_change', { reason: 'incorrect_current_password' });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+          msg: MESSAGES.CURRENT_PASSWORD_INCORRECT 
+        });
+      }
+
+      // Validate new password
+      const passwordError = await validateNewPassword(user, password);
+      if (passwordError) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ msg: passwordError });
+      }
+
+      // Update password using utility function
+      await updateUserPassword(user, password);
+      updatedFields.push('password');
+      
+      logActivity(user._id, 'password_changed', { method: 'profile_update' });
+    }
+
+    // Save updated user
+    await user.save();
+
+    // Log profile update
+    if (updatedFields.length > 0) {
+      logActivity(user._id, 'profile_updated', { fields: updatedFields });
+    }
+
+    res.json({ 
+      success: true,
+      msg: MESSAGES.PROFILE_UPDATED,
+      updatedFields
+    });
+
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Failed to update profile. Please try again.' 
+    });
   }
-
-  await user.save();
-  logActivity(user._id, 'update_profile', { fields: Object.keys(req.body) });
-  res.json({ msg: 'Profile updated.' });
 };
 
 // FORCE password change (for password expiry)
