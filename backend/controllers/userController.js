@@ -1,35 +1,39 @@
 const User = require('../models/User');
-const bcrypt = require('bcryptjs');
-const zxcvbn = require('zxcvbn');
 const { logActivity } = require('../utils/logger');
+const { 
+  validateNewPassword, 
+  comparePassword, 
+  updateUserPassword 
+} = require('../utils/passwordValidator');
+const { HTTP_STATUS, MESSAGES } = require('../config/constants');
 
-// GET user profile (safe fields)
+/**
+ * Get User Profile Controller
+ * Returns user profile data (excluding sensitive fields)
+ */
 exports.getProfile = async (req, res) => {
-  const user = await User.findById(req.user.id).select('-password -mfaSecret -passwordHistory');
-  if (!user) return res.status(404).json({ msg: 'User not found.' });
-  res.json(user);
-};
+  try {
+    const user = await User.findById(req.user.id)
+      .select('-password -mfaSecret -passwordHistory -otpExpiry');
+    
+    if (!user) {
+      return res.status(HTTP_STATUS.NOT_FOUND).json({ 
+        msg: MESSAGES.USER_NOT_FOUND 
+      });
+    }
 
-// Helper: Password policy & history checks
-async function validateNewPassword(user, password) {
-  // Length
-  if (!password || password.length < 8 || password.length > 32)
-    return 'Password must be 8-32 characters.';
-  // Strength
-  if (zxcvbn(password).score < 3)
-    return 'Password too weak.';
-  // Pattern
-  const pattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).+$/;
-  if (!pattern.test(password))
-    return 'Password must have upper, lower, number, symbol.';
-  // Recent N (5) not reused
-  const recent = user.passwordHistory ? user.passwordHistory.slice(-5) : [];
-  for (let prev of recent) {
-    if (await bcrypt.compare(password, prev))
-      return 'Cannot reuse recent password.';
+    res.json({
+      success: true,
+      user
+    });
+
+  } catch (err) {
+    console.error('Get profile error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Failed to retrieve profile' 
+    });
   }
-  return null;
-}
+};
 
 // UPDATE user profile (fields + password)
 exports.updateProfile = async (req, res) => {
