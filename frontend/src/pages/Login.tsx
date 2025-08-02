@@ -69,7 +69,12 @@ const Login: React.FC = () => {
         navigate("/dashboard");
       }
     } catch (err: any) {
-      toast.error(err.response?.data?.msg || "Login failed. Please check your credentials.");
+      // Handle rate limiting specifically
+      if (err.response?.status === 429) {
+        toast.error(err.response?.data?.msg || "Too many login attempts. Please wait before trying again.");
+      } else {
+        toast.error(err.response?.data?.msg || "Login failed. Please check your credentials.");
+      }
     } finally {
       setLoading(false);
     }
