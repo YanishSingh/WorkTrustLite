@@ -49,7 +49,7 @@ exports.register = async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await User.findByEmail(email);
     if (existingUser) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
         msg: MESSAGES.EMAIL_ALREADY_EXISTS 
@@ -62,7 +62,7 @@ exports.register = async (req, res) => {
     // Create new user with security defaults
     const user = new User({
       name: name.trim(),
-      email: email.toLowerCase(),
+      email: email.toLowerCase(), // Will be encrypted by pre-save middleware
       password: hashedPassword,
       role,
       passwordHistory: [hashedPassword],
@@ -104,8 +104,8 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find user by email (case-insensitive)
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // Find user by email (using hash for security)
+    const user = await User.findByEmail(email);
     if (!user) {
       // Log failed login attempt
       logActivity(null, 'failed_login_attempt', { email, reason: 'user_not_found' });
@@ -213,8 +213,11 @@ exports.login = async (req, res) => {
     user.otpExpiry = Date.now() + MFA.OTP_EXPIRY_MINUTES * 60 * 1000;
     await user.save();
 
+    // Get decrypted email for sending
+    const decryptedEmail = user.getDecryptedEmail();
+    
     // Send OTP via email
-    await sendOTP(user.email, otp);
+    await sendOTP(decryptedEmail, otp);
     
     // Log successful password verification
     logActivity(user._id, 'login_password_verified', { mfaRequired: true });
@@ -249,7 +252,7 @@ exports.requestMfa = async (req, res) => {
     }
 
     // Find user
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findByEmail(email);
     if (!user) {
       // Don't reveal if user exists for security
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
@@ -268,11 +271,14 @@ exports.requestMfa = async (req, res) => {
     user.otpExpiry = Date.now() + MFA.OTP_EXPIRY_MINUTES * 60 * 1000;
     await user.save();
 
+    // Get decrypted email for sending
+    const decryptedEmail = user.getDecryptedEmail();
+    
     // Send OTP via email
-    await sendOTP(email, otp);
+    await sendOTP(decryptedEmail, otp);
     
     // Log OTP request
-    logActivity(user._id, 'mfa_otp_requested', { email });
+    logActivity(user._id, 'mfa_otp_requested', { email: decryptedEmail });
 
     res.json({ msg: 'Verification code sent to your email' });
 
@@ -300,7 +306,7 @@ exports.verifyMfa = async (req, res) => {
     }
 
     // Find user
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findByEmail(email);
     if (!user || !user.mfaSecret) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
         msg: 'No verification process found. Please request a new code.' 
@@ -391,7 +397,7 @@ exports.forgotPassword = async (req, res) => {
     }
 
     // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findByEmail(email);
     if (!user) {
       // Don't reveal if user exists for security
       return res.status(HTTP_STATUS.OK).json({ 
@@ -410,11 +416,14 @@ exports.forgotPassword = async (req, res) => {
     user.otpExpiry = Date.now() + MFA.OTP_EXPIRY_MINUTES * 60 * 1000;
     await user.save();
 
+    // Get decrypted email for sending
+    const decryptedEmail = user.getDecryptedEmail();
+    
     // Send OTP via email
-    await sendOTP(user.email, otp, 'Password Reset');
+    await sendOTP(decryptedEmail, otp, 'Password Reset');
     
     // Log password reset request
-    logActivity(user._id, 'password_reset_requested', { email: user.email });
+    logActivity(user._id, 'password_reset_requested', { email: decryptedEmail });
 
     res.json({ 
       msg: 'If an account with this email exists, you will receive a password reset code.',
@@ -445,7 +454,7 @@ exports.resetPassword = async (req, res) => {
     }
 
     // Find user
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findByEmail(email);
     if (!user || !user.mfaSecret) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
         msg: 'Invalid or expired reset request. Please request a new password reset.' 

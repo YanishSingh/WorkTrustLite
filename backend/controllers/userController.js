@@ -22,9 +22,16 @@ exports.getProfile = async (req, res) => {
       });
     }
 
+    // Decrypt email for response
+    const decryptedEmail = user.getDecryptedEmail();
+    const userResponse = {
+      ...user.toObject(),
+      email: decryptedEmail || user.email // Fallback to encrypted if decryption fails
+    };
+
     res.json({
       success: true,
-      user
+      user: userResponse
     });
 
   } catch (err) {
