@@ -4,6 +4,7 @@ import api from "../api/axios";
 import { useAuth } from "../context/useAuth";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import ForgotPassword from "../components/ForgotPassword";
 
 interface User {
   id: string;
@@ -27,6 +28,7 @@ const Login: React.FC = () => {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -89,6 +91,11 @@ const Login: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Show forgot password component if requested
+  if (showForgotPassword) {
+    return <ForgotPassword onBackToLogin={() => setShowForgotPassword(false)} />;
+  }
 
   // --- UI ---
   return (
@@ -163,6 +170,17 @@ const Login: React.FC = () => {
               >
                 {loading ? "Signing in..." : "Login"}
               </button>
+              
+              <div className="text-center">
+                <button
+                  type="button"
+                  className="text-sm text-emerald-600 hover:text-emerald-500 font-medium hover:underline"
+                  onClick={() => setShowForgotPassword(true)}
+                  disabled={loading}
+                >
+                  Forgot your password?
+                </button>
+              </div>
             </form>
           ) : (
             <form onSubmit={handleVerifyMfa} className="space-y-6">
