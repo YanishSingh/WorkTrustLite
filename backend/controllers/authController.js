@@ -138,6 +138,18 @@ exports.login = async (req, res) => {
           reason: 'max_failed_attempts',
           lockoutUntil: user.accountLockedUntil 
         });
+        
+        await user.save();
+        logActivity(user._id, 'failed_login_attempt', { 
+          reason: 'invalid_password',
+          failedAttempts: user.failedLoginAttempts 
+        });
+        
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ 
+          msg: `Account locked due to too many failed attempts. Please try again in ${ACCOUNT_LOCKOUT.LOCKOUT_DURATION_MINUTES} minutes.`,
+          accountLocked: true,
+          lockoutDuration: ACCOUNT_LOCKOUT.LOCKOUT_DURATION_MINUTES
+        });
       }
       
       await user.save();
@@ -146,8 +158,11 @@ exports.login = async (req, res) => {
         failedAttempts: user.failedLoginAttempts 
       });
       
+      // Show remaining attempts before lockout
+      const remainingAttempts = ACCOUNT_LOCKOUT.MAX_FAILED_ATTEMPTS - user.failedLoginAttempts;
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
-        msg: MESSAGES.INVALID_CREDENTIALS 
+        msg: `Invalid email or password. ${remainingAttempts} attempt${remainingAttempts !== 1 ? 's' : ''} remaining before account lockout.`,
+        remainingAttempts
       });
     }
 
@@ -173,6 +188,19 @@ exports.login = async (req, res) => {
     user.failedLoginAttempts = 0;
     user.loginCountSincePasswordChange = (user.loginCountSincePasswordChange || 0) + 1;
     await user.save();
+
+    // Check if there's already a valid OTP
+    if (user.mfaSecret && user.otpExpiry > Date.now()) {
+      // Don't generate new OTP if one is still valid
+      logActivity(user._id, 'mfa_otp_reuse_existing', { 
+        remainingTime: Math.floor((user.otpExpiry - Date.now()) / 1000) 
+      });
+      return res.json({ 
+        mfaRequired: true, 
+        email: user.email,
+        msg: 'A verification code was already sent. Please check your email or wait for it to expire.'
+      });
+    }
 
     // Generate and send MFA OTP
     const otp = Math.floor(
@@ -295,7 +323,14 @@ exports.verifyMfa = async (req, res) => {
     // Verify OTP
     const otpHash = crypto.createHash('sha256').update(otp.toString()).digest('hex');
     if (user.mfaSecret !== otpHash) {
-      logActivity(user._id, 'mfa_otp_invalid', { otp: otp.substring(0, 2) + '***' });
+      // Enhanced logging for debugging
+      logActivity(user._id, 'mfa_otp_invalid', { 
+        otp: otp.substring(0, 2) + '***',
+        expectedHashStart: user.mfaSecret.substring(0, 8),
+        actualHashStart: otpHash.substring(0, 8),
+        otpExpiry: user.otpExpiry,
+        currentTime: Date.now()
+      });
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
         msg: MESSAGES.OTP_INVALID 
       });
