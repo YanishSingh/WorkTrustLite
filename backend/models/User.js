@@ -26,15 +26,29 @@ const userSchema = new mongoose.Schema({
   failedLoginAttempts: { type: Number, default: 0 }
 }, { timestamps: true });
 
+// Pre-validate middleware to ensure emailHash is set
+userSchema.pre('validate', function(next) {
+  if (this.isNew && this.email && !this.emailHash) {
+    try {
+      this.emailHash = hashEmail(this.email);
+    } catch (error) {
+      return next(error);
+    }
+  }
+  next();
+});
+
 // Pre-save middleware to encrypt email and create hash
 userSchema.pre('save', function(next) {
-  if (this.isModified('email')) {
+  if (this.isModified('email') || this.isNew) {
     try {
       // Store original email for hashing
       const originalEmail = this.email;
       
-      // Create hash for searching (from original plaintext)
-      this.emailHash = hashEmail(originalEmail);
+      // Create hash for searching (from original plaintext) if not already set
+      if (!this.emailHash) {
+        this.emailHash = hashEmail(originalEmail);
+      }
       
       // Encrypt the email
       this.email = encryptEmail(originalEmail);
