@@ -7,7 +7,8 @@ const {
   validateNewPassword, 
   hashPassword, 
   comparePassword, 
-  checkPasswordExpiry 
+  checkPasswordExpiry,
+  updateUserPassword 
 } = require('../utils/passwordValidator');
 const { 
   PASSWORD, 
@@ -335,6 +336,141 @@ exports.verifyMfa = async (req, res) => {
     console.error('MFA verification error:', err);
     res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
       msg: 'Verification failed. Please try again.' 
+    });
+  }
+};
+
+/**
+ * Forgot Password Controller
+ * Generates and sends OTP for password reset
+ */
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Input validation
+    if (!email) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Email is required' 
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Don't reveal if user exists for security
+      return res.status(HTTP_STATUS.OK).json({ 
+        msg: 'If an account with this email exists, you will receive a password reset code.' 
+      });
+    }
+
+    // Generate secure OTP for password reset
+    const otp = Math.floor(
+      Math.pow(10, MFA.OTP_LENGTH - 1) + 
+      Math.random() * (Math.pow(10, MFA.OTP_LENGTH) - Math.pow(10, MFA.OTP_LENGTH - 1))
+    ).toString();
+    
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    user.mfaSecret = otpHash; // Reuse existing field for password reset OTP
+    user.otpExpiry = Date.now() + MFA.OTP_EXPIRY_MINUTES * 60 * 1000;
+    await user.save();
+
+    // Send OTP via email
+    await sendOTP(user.email, otp, 'Password Reset');
+    
+    // Log password reset request
+    logActivity(user._id, 'password_reset_requested', { email: user.email });
+
+    res.json({ 
+      msg: 'If an account with this email exists, you will receive a password reset code.',
+      email: user.email // Include for frontend flow
+    });
+
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Password reset request failed. Please try again.' 
+    });
+  }
+};
+
+/**
+ * Reset Password Controller
+ * Verifies OTP and updates user password
+ */
+exports.resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    // Input validation
+    if (!email || !otp || !newPassword) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Email, OTP, and new password are required' 
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user || !user.mfaSecret) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Invalid or expired reset request. Please request a new password reset.' 
+      });
+    }
+
+    // Check OTP expiry
+    if (user.otpExpiry < Date.now()) {
+      // Clean up expired OTP
+      user.mfaSecret = undefined;
+      user.otpExpiry = undefined;
+      await user.save();
+      
+      logActivity(user._id, 'password_reset_otp_expired', {});
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Reset code has expired. Please request a new password reset.' 
+      });
+    }
+
+    // Verify OTP
+    const otpHash = crypto.createHash('sha256').update(otp.toString()).digest('hex');
+    if (user.mfaSecret !== otpHash) {
+      logActivity(user._id, 'password_reset_otp_invalid', { otp: otp.substring(0, 2) + '***' });
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: 'Invalid reset code' 
+      });
+    }
+
+    // Validate new password using existing utility
+    const passwordError = await validateNewPassword(user, newPassword);
+    if (passwordError) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ msg: passwordError });
+    }
+
+    // Update password using existing utility (handles history, expiry, etc.)
+    await updateUserPassword(user, newPassword);
+
+    // Clean up OTP data
+    user.mfaSecret = undefined;
+    user.otpExpiry = undefined;
+    user.failedLoginAttempts = 0; // Reset failed attempts
+    user.accountLockedUntil = undefined; // Unlock account if locked
+    
+    await user.save();
+
+    // Log successful password reset
+    logActivity(user._id, 'password_reset_successful', { 
+      email: user.email,
+      resetMethod: 'otp_verification'
+    });
+
+    res.json({
+      success: true,
+      msg: 'Password reset successful! Please log in with your new password.'
+    });
+
+  } catch (err) {
+    console.error('Password reset error:', err);
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ 
+      msg: 'Password reset failed. Please try again.' 
     });
   }
 };
