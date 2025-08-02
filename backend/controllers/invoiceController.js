@@ -11,15 +11,33 @@ exports.createInvoice = async (req, res) => {
       return res.status(403).json({ msg: 'Only freelancers can create invoices.' });
     }
     const { clientId, amount, description, dueDate } = req.body;
+    
+    // Debug logging to see what we're receiving
+    console.log('=== Invoice Creation Debug ===');
+    console.log('Request body:', req.body);
+    console.log('dueDate value:', dueDate);
+    console.log('dueDate type:', typeof dueDate);
+    console.log('dueDate truthy:', !!dueDate);
+    console.log('Parsed date:', dueDate ? new Date(dueDate) : 'No date');
+    console.log('================');
+    
     if (!clientId || !amount) return res.status(400).json({ msg: 'Missing data.' });
 
-    const invoice = await Invoice.create({
+    const invoiceData = {
       client: clientId,
       freelancer: req.user.id,
       amount,
       description,
-      dueDate: dueDate ? new Date(dueDate) : undefined,
-    });
+    };
+    
+    // Only add dueDate if it exists and is not empty
+    if (dueDate && dueDate.trim() !== '') {
+      invoiceData.dueDate = new Date(dueDate);
+    }
+    
+    console.log('Final invoice data:', invoiceData);
+    
+    const invoice = await Invoice.create(invoiceData);
 
     // Send email to client
     const client = await User.findById(clientId);
