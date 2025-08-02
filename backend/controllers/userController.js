@@ -5,6 +5,10 @@ const {
   comparePassword, 
   updateUserPassword 
 } = require('../utils/passwordValidator');
+const { 
+  validateAndSanitizeName,
+  validateAndSanitizeDescription
+} = require('../utils/inputValidator');
 const { HTTP_STATUS, MESSAGES } = require('../config/constants');
 
 /**
@@ -62,12 +66,24 @@ exports.updateProfile = async (req, res) => {
 
     // Update profile fields
     if (name && name.trim() !== user.name) {
-      user.name = name.trim();
+      const nameValidation = validateAndSanitizeName(name);
+      if (!nameValidation.isValid) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+          msg: nameValidation.error 
+        });
+      }
+      user.name = nameValidation.sanitizedValue;
       updatedFields.push('name');
     }
     
     if (bio !== undefined && bio !== user.bio) {
-      user.bio = bio ? bio.trim() : '';
+      const bioValidation = validateAndSanitizeDescription(bio, 'Bio');
+      if (!bioValidation.isValid) {
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+          msg: bioValidation.error 
+        });
+      }
+      user.bio = bioValidation.sanitizedValue;
       updatedFields.push('bio');
     }
     
@@ -252,9 +268,19 @@ exports.getFreelancers = async (req, res) => {
       '_id name email'
     ).sort({ name: 1 });
     
+    // Decrypt emails for frontend display
+    const freelancersWithDecryptedEmails = freelancers.map(freelancer => {
+      const decryptedEmail = freelancer.getDecryptedEmail();
+      return {
+        _id: freelancer._id,
+        name: freelancer.name,
+        email: decryptedEmail || freelancer.email // Use decrypted email, fallback to encrypted if decryption fails
+      };
+    });
+    
     res.json({
       success: true,
-      freelancers
+      freelancers: freelancersWithDecryptedEmails
     });
 
   } catch (err) {
@@ -276,9 +302,19 @@ exports.getClients = async (req, res) => {
       '_id name email'
     ).sort({ name: 1 });
     
+    // Decrypt emails for frontend display
+    const clientsWithDecryptedEmails = clients.map(client => {
+      const decryptedEmail = client.getDecryptedEmail();
+      return {
+        _id: client._id,
+        name: client.name,
+        email: decryptedEmail || client.email // Use decrypted email, fallback to encrypted if decryption fails
+      };
+    });
+    
     res.json({
       success: true,
-      clients
+      clients: clientsWithDecryptedEmails
     });
 
   } catch (err) {
