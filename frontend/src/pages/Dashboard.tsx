@@ -130,13 +130,13 @@ const Dashboard: React.FC = () => {
               onClick={() => navigate('/invoices')}
               className="px-5 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 shadow-sm transition"
             >
-              My Invoices & Payments
+              View Invoices
             </button>
             <button
-              onClick={() => navigate('/invoices?create=1')}
-              className="px-5 py-2 bg-amber-400 text-emerald-900 font-semibold rounded-lg hover:bg-amber-500 shadow-sm transition"
+              onClick={() => navigate('/payment')}
+              className="px-5 py-2 bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-600 shadow-sm transition"
             >
-              Create Invoice
+              Payment History
             </button>
           </>
         )}
@@ -147,7 +147,7 @@ const Dashboard: React.FC = () => {
               onClick={() => navigate('/invoices')}
               className="px-5 py-2 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 shadow-sm transition"
             >
-              View Invoices
+              Create Invoice
             </button>
             <button
               onClick={() => navigate('/payment')}
