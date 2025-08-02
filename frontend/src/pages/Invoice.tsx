@@ -217,6 +217,7 @@ const InvoicePage: React.FC = () => {
                   id="dueDate"
                   placeholder="Due Date"
                   value={form.dueDate}
+                  min={new Date().toISOString().split('T')[0]} // Prevent past dates
                   onChange={e => setForm({ ...form, dueDate: e.target.value })}
                   disabled={loading}
                 />
