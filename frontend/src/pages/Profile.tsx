@@ -17,6 +17,7 @@ interface ProfileResponse {
 const Profile: React.FC = () => {
   const { user, token, login } = useAuth();
   const [profile, setProfile] = useState<ProfileResponse>({ name: '', email: '', bio: '', avatar: '' });
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [changingPwd, setChangingPwd] = useState(false);
   const [pwd, setPwd] = useState({ currentPassword: '', password: '', confirm: '' });
@@ -25,10 +26,13 @@ const Profile: React.FC = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const res = await api.get<ProfileResponse>('/user/me', { headers: { Authorization: `Bearer ${token}` } });
-        setProfile(res.data);
+        setLoading(true);
+        const res = await api.get<{success: boolean, user: ProfileResponse}>('/user/me', { headers: { Authorization: `Bearer ${token}` } });
+        setProfile(res.data.user);
       } catch {
         toast.error('Could not fetch profile');
+      } finally {
+        setLoading(false);
       }
     };
     fetchProfile();
@@ -69,6 +73,21 @@ const Profile: React.FC = () => {
     }
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="max-w-xl mx-auto mt-12 px-2">
+        <div className="rounded-2xl shadow-2xl p-8 border border-gray-100 bg-white/90 flex flex-col gap-8">
+          <BackToDashboardButton />
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+            <span className="ml-3 text-emerald-600">Loading profile...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-xl mx-auto mt-12 px-2">
       <div className="rounded-2xl shadow-2xl p-8 border border-gray-100 bg-white/90 flex flex-col gap-8">
@@ -80,7 +99,7 @@ const Profile: React.FC = () => {
               <img src={profile.avatar} alt="avatar" className="w-24 h-24 rounded-full border-4 border-emerald-100 shadow-lg object-cover" />
             ) : (
               <span className="w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-600 to-blue-400 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
-                {profile.name.charAt(0) || user?.name.charAt(0) || "U"}
+                {(profile.name && profile.name.charAt(0)) || (user?.name && user.name.charAt(0)) || "U"}
               </span>
             )}
             <button
@@ -93,8 +112,8 @@ const Profile: React.FC = () => {
               <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" strokeWidth="2"/><path d="M4 20v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2" stroke="currentColor" strokeWidth="2"/><path d="M16 7V6a4 4 0 1 0-8 0v1" stroke="currentColor" strokeWidth="2"/></svg>
             </button>
           </div>
-          <h2 className="text-2xl font-extrabold text-emerald-800">{profile.name}</h2>
-          <p className="text-emerald-500 text-sm">{profile.email}</p>
+          <h2 className="text-2xl font-extrabold text-emerald-800">{profile.name || user?.name || 'User'}</h2>
+          <p className="text-emerald-500 text-sm">{profile.email || user?.email || ''}</p>
         </div>
 
         {/* Edit Profile Section */}
