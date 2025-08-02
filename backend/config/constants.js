@@ -79,7 +79,7 @@ module.exports = {
     CURRENT_PASSWORD_REQUIRED: 'Current password is required',
     CURRENT_PASSWORD_INCORRECT: 'Current password is incorrect',
     INVALID_CREDENTIALS: 'Invalid email or password',
-    ACCOUNT_LOCKED: 'Account is locked due to too many failed attempts. Please try again later',
+    ACCOUNT_LOCKED: 'Account is locked due to too many failed attempts. Please try again in 10 minutes.',
     EMAIL_ALREADY_EXISTS: 'An account with this email already exists',
     USER_NOT_FOUND: 'User not found',
     PASSWORD_EXPIRED: 'Your password has expired. Please set a new password',
