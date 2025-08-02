@@ -112,7 +112,13 @@
    VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
    ```
 
-4. **Start the application**
+4. **Migrate existing emails (if upgrading)**
+   ```bash
+   # Run email encryption migration (from backend directory)
+   node migrate-emails.js
+   ```
+
+5. **Start the application**
    ```bash
    # Start backend (from backend directory)
    npm run dev
@@ -170,7 +176,7 @@
 - **API Level**: 30 requests per minute per IP
 
 ### **Data Protection**
-- **Encryption**: AES-256-CBC for sensitive data
+- **Email Encryption**: AES-256-CBC encryption for user emails
 - **Password Hashing**: bcrypt with 12 salt rounds
 - **JWT Security**: RS256 signing with secure expiration
 - **Input Sanitization**: Comprehensive validation and sanitization
