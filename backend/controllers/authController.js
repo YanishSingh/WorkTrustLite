@@ -11,6 +11,11 @@ const {
   updateUserPassword 
 } = require('../utils/passwordValidator');
 const { 
+  validateAndSanitizeName,
+  validateAndSanitizeEmail,
+  validateRole
+} = require('../utils/inputValidator');
+const { 
   PASSWORD, 
   ACCOUNT_LOCKOUT, 
   MFA, 
@@ -27,18 +32,25 @@ exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Input validation
-    if (!name || !email || !password || !role) {
+    // Comprehensive input validation and sanitization
+    const nameValidation = validateAndSanitizeName(name);
+    if (!nameValidation.isValid) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
-        msg: 'All fields are required' 
+        msg: nameValidation.error 
       });
     }
 
-    // Email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    const emailValidation = validateAndSanitizeEmail(email);
+    if (!emailValidation.isValid) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
-        msg: 'Please provide a valid email address' 
+        msg: emailValidation.error 
+      });
+    }
+
+    const roleValidation = validateRole(role);
+    if (!roleValidation.isValid) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
+        msg: roleValidation.error 
       });
     }
 
@@ -49,7 +61,7 @@ exports.register = async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await User.findByEmail(email);
+    const existingUser = await User.findByEmail(emailValidation.sanitizedValue);
     if (existingUser) {
       return res.status(HTTP_STATUS.BAD_REQUEST).json({ 
         msg: MESSAGES.EMAIL_ALREADY_EXISTS 
@@ -61,10 +73,10 @@ exports.register = async (req, res) => {
 
     // Create new user with security defaults
     const user = new User({
-      name: name.trim(),
-      email: email.toLowerCase(), // Will be encrypted by pre-save middleware
+      name: nameValidation.sanitizedValue,
+      email: emailValidation.sanitizedValue, // Will be encrypted by pre-save middleware
       password: hashedPassword,
-      role,
+      role: roleValidation.sanitizedValue,
       passwordHistory: [hashedPassword],
       passwordChangedAt: new Date(),
       passwordExpiry: new Date(Date.now() + PASSWORD.EXPIRY_DAYS * 24 * 60 * 60 * 1000),
@@ -170,6 +182,10 @@ exports.login = async (req, res) => {
     const expiryCheck = checkPasswordExpiry(user);
     if (expiryCheck.expired) {
       logActivity(user._id, 'password_expiry_detected', { reason: expiryCheck.reason });
+      
+      // Get decrypted email for response
+      const decryptedEmail = user.getDecryptedEmail();
+      
       return res.status(HTTP_STATUS.OK).json({
         msg: expiryCheck.message,
         passwordExpired: true,
@@ -177,7 +193,7 @@ exports.login = async (req, res) => {
         user: {
           id: user._id,
           name: user.name,
-          email: user.email,
+          email: decryptedEmail || user.email, // Use decrypted email, fallback to encrypted if decryption fails
           role: user.role,
           mfaEnabled: user.mfaEnabled,
         }
@@ -195,9 +211,13 @@ exports.login = async (req, res) => {
       logActivity(user._id, 'mfa_otp_reuse_existing', { 
         remainingTime: Math.floor((user.otpExpiry - Date.now()) / 1000) 
       });
+      
+      // Get decrypted email for response
+      const decryptedEmail = user.getDecryptedEmail();
+      
       return res.json({ 
         mfaRequired: true, 
-        email: user.email,
+        email: decryptedEmail || user.email, // Use decrypted email, fallback to encrypted if decryption fails
         msg: 'A verification code was already sent. Please check your email or wait for it to expire.'
       });
     }
@@ -224,7 +244,7 @@ exports.login = async (req, res) => {
 
     return res.json({ 
       mfaRequired: true, 
-      email: user.email,
+      email: decryptedEmail || user.email, // Use decrypted email, fallback to encrypted if decryption fails
       msg: 'Please check your email for the verification code'
     });
 
@@ -360,13 +380,16 @@ exports.verifyMfa = async (req, res) => {
       userAgent: req.headers['user-agent']
     });
 
+    // Get decrypted email for response
+    const decryptedEmail = user.getDecryptedEmail();
+
     res.json({
       success: true,
       token,
       user: {
         id: user._id,
         name: user.name,
-        email: user.email,
+        email: decryptedEmail || user.email, // Use decrypted email, fallback to encrypted if decryption fails
         role: user.role,
         mfaEnabled: user.mfaEnabled,
       },
@@ -427,7 +450,7 @@ exports.forgotPassword = async (req, res) => {
 
     res.json({ 
       msg: 'If an account with this email exists, you will receive a password reset code.',
-      email: user.email // Include for frontend flow
+      email: decryptedEmail || user.email // Include decrypted email for frontend flow
     });
 
   } catch (err) {
@@ -500,9 +523,12 @@ exports.resetPassword = async (req, res) => {
     
     await user.save();
 
+    // Get decrypted email for logging
+    const decryptedEmail = user.getDecryptedEmail();
+    
     // Log successful password reset
     logActivity(user._id, 'password_reset_successful', { 
-      email: user.email,
+      email: decryptedEmail || user.email,
       resetMethod: 'otp_verification'
     });
 
