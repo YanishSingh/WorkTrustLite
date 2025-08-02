@@ -60,9 +60,26 @@ const InvoicePage: React.FC = () => {
   // Fetch clients for dropdown (for freelancers)
   useEffect(() => {
     if (!token || user?.role !== 'freelancer') return;
-    api.get<User[]>('/user/clients', { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => setClients(res.data))
-      .catch(() => toast.error('Could not load client list.'));
+    api.get('/user/clients', { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => {
+        // Safely handle unknown type for res.data
+        let clientsData = res.data;
+        if (
+          clientsData &&
+          typeof clientsData === 'object' &&
+          clientsData !== null &&
+          Object.prototype.hasOwnProperty.call(clientsData, 'clients')
+        ) {
+          // @ts-ignore: Index signature
+          clientsData = clientsData.clients;
+        }
+        setClients(Array.isArray(clientsData) ? (clientsData as User[]) : []);
+      })
+      .catch((err) => {
+        console.error('Failed to load clients:', err);
+        setClients([]); // Ensure clients is always an array
+        toast.error('Could not load client list.');
+      });
   }, [token, user?.role]);
 
   // Polling for real-time invoice updates
@@ -155,7 +172,7 @@ const InvoicePage: React.FC = () => {
                   disabled={loading}
                 >
                   <option value="">Select Client</option>
-                  {clients.map(c => (
+                  {Array.isArray(clients) && clients.map(c => (
                     <option key={c._id} value={c._id}>
                       {c.name} ({c.email})
                     </option>
